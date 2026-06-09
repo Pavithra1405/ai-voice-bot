@@ -42,13 +42,21 @@ const handleChat = async (req, res) => {
       }
     });
 
-    stream.on("end", () => {
+    stream.on("end", async () => {
+      console.log("Stream ended. fullReply:", fullReply);
       if (fullReply) {
-        Conversation.create({
-          userId,
-          userMessage: message,
-          botReply: fullReply,
-        });
+        try {
+          await Conversation.create({
+            userId,
+            userMessage: message,
+            botReply: fullReply,
+          });
+          console.log("✅ Conversation saved to MongoDB");
+        } catch (err) {
+          console.error("❌ Failed to save conversation:", err.message);
+        }
+      } else {
+        console.log("⚠️ fullReply is empty — not saving");
       }
       if (!res.writableEnded) {
         res.write("data: [DONE]\n\n");
