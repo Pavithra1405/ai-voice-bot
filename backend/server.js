@@ -16,7 +16,7 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://ai-voice-bot-nu.vercel.app/"  // your actual Vercel URL
+    "https://ai-voice-bot-nu.vercel.app"  // your actual Vercel URL
   ]
 }));
 app.use(express.json());
