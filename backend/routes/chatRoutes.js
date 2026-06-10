@@ -3,9 +3,9 @@
 const express = require("express");
 const router = express.Router();
 const { handleChat, getHistory } = require("../controllers/chatController");
-const { protect } = require("../middleware/authMiddleware");
+const auth = require("../middleware/authMiddleware");
 
-router.post("/", protect, handleChat);
-router.get("/history", protect, getHistory);
+router.post("/", auth, handleChat);
+router.get("/history", auth, getHistory);
 
 module.exports = router;
