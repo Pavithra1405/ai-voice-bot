@@ -1,5 +1,4 @@
 // backend/routes/sessionRoutes.js
-
 const express = require("express");
 const router = express.Router();
 const auth = require("../middleware/authMiddleware");
@@ -10,7 +9,7 @@ router.get("/", auth, async (req, res) => {
   try {
     const sessions = await ChatSession.find({ userId: req.user._id })
       .sort({ updatedAt: -1 })
-      .select("_id title updatedAt")
+      .select("_id title updatedAt isShared shareId")
       .limit(50);
     res.json({ sessions });
   } catch (err) {
@@ -57,8 +56,9 @@ router.patch("/:id", auth, async (req, res) => {
     const session = await ChatSession.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id },
       update,
-      { returnDocument: "after" } // ← fixed deprecated option
+      { returnDocument: "after" }
     );
+    if (!session) return res.status(404).json({ error: "Session not found" });
     res.json({ session });
   } catch (err) {
     res.status(500).json({ error: "Failed to update session" });
@@ -75,6 +75,41 @@ router.delete("/:id", auth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete session" });
+  }
+});
+
+// Toggle share on/off
+router.patch("/:id/share", auth, async (req, res) => {
+  try {
+    const session = await ChatSession.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+    if (!session) return res.status(404).json({ message: "Session not found" });
+
+    session.isShared = !session.isShared;
+    await session.save();
+
+    res.json({
+      isShared: session.isShared,
+      shareId: session.shareId,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Public route — no auth needed
+router.get("/shared/:shareId", async (req, res) => {
+  try {
+    const session = await ChatSession.findOne({
+      shareId: req.params.shareId,
+      isShared: true,
+    });
+    if (!session) return res.status(404).json({ message: "Link invalid or sharing disabled" });
+    res.json(session);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
 });
 

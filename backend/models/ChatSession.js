@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { nanoid } = require("nanoid");
 
 const ChatSessionSchema = new mongoose.Schema(
   {
@@ -11,6 +12,8 @@ const ChatSessionSchema = new mongoose.Schema(
         time: { type: Date, default: Date.now },
       },
     ],
+    shareId:  { type: String, default: () => nanoid(10) },
+    isShared: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

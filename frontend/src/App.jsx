@@ -69,6 +69,65 @@ function MoonIcon() {
   );
 }
 
+// ── Shared Chat View (public read-only) ─────────────────────
+function SharedChatView() {
+  const [messages, setMessages] = useState([]);
+  const [title, setTitle]       = useState("");
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    const shareId = window.location.pathname.split("/shared/")[1];
+    if (!shareId) { setError("Invalid link."); setLoading(false); return; }
+
+    fetch(`${API}/sessions/shared/${shareId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.message) { setError(data.message); return; }
+        setTitle(data.title || "Shared Chat");
+        setMessages(data.messages || []);
+      })
+      .catch(() => setError("Failed to load shared chat."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return (
+    <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", fontSize:16 }}>
+      <NeuralIcon size={28} /> &nbsp; Loading shared chat...
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", fontSize:16, color:"#ef4444" }}>
+      ❌ {error}
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth:720, margin:"0 auto", padding:"32px 16px", fontFamily:"sans-serif" }}>
+      <div style={{ marginBottom:24, paddingBottom:16, borderBottom:"1px solid #e2e8f0" }}>
+        <h2 style={{ margin:0 }}>💬 {title}</h2>
+        <p style={{ margin:"4px 0 0", color:"#94a3b8", fontSize:13 }}>Read-only shared conversation</p>
+      </div>
+      {messages.map((msg, i) => (
+        <div key={i} style={{ display:"flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", marginBottom:12 }}>
+          <div style={{
+            maxWidth:"75%", padding:"10px 14px", borderRadius:12,
+            background: msg.role === "user" ? "#3b82f6" : "#f1f5f9",
+            color: msg.role === "user" ? "#fff" : "#1e293b",
+            fontSize:14, lineHeight:1.5,
+          }}>
+            <div style={{ fontSize:11, opacity:0.6, marginBottom:4 }}>
+              {msg.role === "user" ? "You" : "AI Bot"}
+            </div>
+            {msg.text}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
   const [token, setToken] = useState(localStorage.getItem("token") || "");
@@ -97,6 +156,7 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [toast, setToast] = useState("");
 
   const chatEndRef = useRef(null);
   const fullReplyRef = useRef("");
@@ -110,7 +170,6 @@ export default function App() {
   const tokenRef = useRef(token);
   const currentSessionIdRef = useRef(currentSessionId);
 
-  // Keep refs in sync so async callbacks always have latest values
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => { currentSessionIdRef.current = currentSessionId; }, [currentSessionId]);
 
@@ -169,6 +228,12 @@ export default function App() {
     }
   }, [editingId]);
 
+  // ── Show toast helper ───────────────────────────────────
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 3000);
+  };
+
   // ── Session management ──────────────────────────────────
   const loadSessions = async () => {
     try {
@@ -183,13 +248,10 @@ export default function App() {
   };
 
   const saveCurrentSession = async (msgs = null) => {
-    // msgs param lets us pass fresh state directly (avoids stale closure)
     const msgsToSave = msgs;
     if (!msgsToSave || !msgsToSave.length) return;
-
     const title =
       msgsToSave.find((m) => m.role === "user")?.text?.slice(0, 50) || "New Chat";
-
     try {
       const sessId = currentSessionIdRef.current;
       if (sessId) {
@@ -230,7 +292,6 @@ export default function App() {
           currentSessionIdRef.current = data.session._id;
         }
       }
-      // Always refresh sidebar after save
       await loadSessions();
     } catch (err) {
       console.error("Failed to save session", err);
@@ -238,10 +299,8 @@ export default function App() {
   };
 
   const startNewSession = async () => {
-    // Save current messages before clearing
     setMessages((prev) => {
       if (prev.length > 0) {
-        // Fire-and-forget save with current messages
         saveCurrentSession(prev).then(() => loadSessions());
       }
       return [];
@@ -254,12 +313,10 @@ export default function App() {
 
   const loadSession = async (sessionId) => {
     try {
-      // Save current first
       setMessages((prev) => {
         if (prev.length > 0) saveCurrentSession(prev);
         return prev;
       });
-
       const res = await fetch(`${API}/sessions/${sessionId}`, {
         headers: { Authorization: `Bearer ${tokenRef.current}` },
       });
@@ -297,6 +354,34 @@ export default function App() {
       await loadSessions();
     } catch (err) {
       console.error("Failed to delete session", err);
+    }
+  };
+
+  // ── Share session ───────────────────────────────────────
+  const toggleShare = async (sessionId) => {
+    try {
+      const res = await fetch(`${API}/sessions/${sessionId}/share`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
+      });
+      const data = await res.json();
+      setSessions((prev) =>
+        prev.map((s) =>
+          s._id === sessionId
+            ? { ...s, isShared: data.isShared, shareId: data.shareId }
+            : s
+        )
+      );
+      if (data.isShared) {
+        const link = `${window.location.origin}/shared/${data.shareId}`;
+        await navigator.clipboard.writeText(link);
+        showToast("🔗 Share link copied to clipboard!");
+      } else {
+        showToast("🔒 Sharing disabled for this chat.");
+      }
+    } catch (err) {
+      console.error("Share toggle failed", err);
+      showToast("❌ Failed to toggle share.");
     }
   };
 
@@ -456,14 +541,12 @@ export default function App() {
               stopThinkingAnimation();
               setLoading(false);
               speak(fullReplyRef.current);
-              // Use setMessages callback to get fresh state, then save
               setMessages((prev) => {
                 const updatedMessages = prev.map((m) =>
                   m.id === botId
                     ? { ...m, text: fullReplyRef.current, thinking: false }
                     : m
                 );
-                // Save with fresh messages (no stale closure)
                 saveCurrentSession(updatedMessages);
                 return updatedMessages;
               });
@@ -592,6 +675,11 @@ export default function App() {
     return groups;
   }, {});
 
+  // ── Shared page route guard ─────────────────────────────
+  if (window.location.pathname.startsWith("/shared/")) {
+    return <SharedChatView />;
+  }
+
   // ─── AUTH UI ─────────────────────────────────────────────
   if (!token) {
     return (
@@ -698,22 +786,48 @@ export default function App() {
                       </svg>
                       <span>{session.title}</span>
                     </button>
+
                     {deleteConfirmId === session._id ? (
                       <div className="delete-confirm">
                         <button className="delete-yes" onClick={() => deleteSession(session._id)}>Delete</button>
                         <button className="delete-no" onClick={() => setDeleteConfirmId(null)}>Cancel</button>
                       </div>
                     ) : (
-                      <button
-                        className="session-delete"
-                        onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(session._id); }}
-                        title="Delete"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                          <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
-                      </button>
+                      <div style={{ display:"flex", gap:2 }}>
+                        {/* Share button */}
+                        <button
+                          className="session-delete"
+                          title={session.isShared ? "Disable share link" : "Copy share link"}
+                          onClick={(e) => { e.stopPropagation(); toggleShare(session._id); }}
+                          style={{ color: session.isShared ? "#3b82f6" : "inherit" }}
+                        >
+                          {session.isShared ? (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                              <path d="M13.5 10.5L21 3M3 21l7.5-7.5M9 15l-1.5 1.5a4.243 4.243 0 006 6L15 21a4.243 4.243 0 000-6M15 9l1.5-1.5a4.243 4.243 0 00-6-6L9 3a4.243 4.243 0 000 6"
+                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                          ) : (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                              <path d="M13.5 10.5a4.5 4.5 0 010 6.364l-3 3a4.5 4.5 0 01-6.364-6.364l1.5-1.5"
+                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                              <path d="M10.5 13.5a4.5 4.5 0 010-6.364l3-3a4.5 4.5 0 016.364 6.364l-1.5 1.5"
+                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                          )}
+                        </button>
+
+                        {/* Delete button */}
+                        <button
+                          className="session-delete"
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(session._id); }}
+                          title="Delete"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                            <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                          </svg>
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -734,18 +848,13 @@ export default function App() {
       {/* ── Topbar ── */}
       <header className="topbar">
         <div className="topbar-left">
-          {/* <button className="drawer-toggle" onClick={() => setDrawerOpen((o) => !o)} title="Chats">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button> */}
           <button className="drawer-toggle" onClick={() => setDrawerOpen((o) => !o)} title="Chats">
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5"/>
-    <path d="M9 3v18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    <path d="M13 8h4M13 12h4M13 16h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-  </svg>
-</button>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M9 3v18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <path d="M13 8h4M13 12h4M13 16h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
           <div className="topbar-logo"><NeuralIcon size={20} /></div>
           <span className="topbar-title">AI Voice Bot</span>
           <span className="online-dot" title="Online" />
@@ -826,12 +935,10 @@ export default function App() {
                 <span className="mobile-menu-username">{user?.name}</span>
               </div>
               <div className="mobile-menu-divider" />
-
               <button className="mobile-menu-item" onClick={() => { toggleTheme(); setMenuOpen(false); }}>
                 {theme === "dark" ? <SunIcon /> : <MoonIcon />}
                 <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
               </button>
-
               <div className="mobile-menu-item mobile-lang-row">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
@@ -845,14 +952,12 @@ export default function App() {
                   ))}
                 </select>
               </div>
-
               <button className="mobile-menu-item" onClick={startNewSession}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
                 <span>New chat</span>
               </button>
-
               <button className="mobile-menu-item" onClick={handleClearChat}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -860,7 +965,6 @@ export default function App() {
                 </svg>
                 <span>Clear chat</span>
               </button>
-
               <div className="mobile-menu-divider" />
               <button className="mobile-menu-item mobile-menu-logout" onClick={handleLogout}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -1036,6 +1140,19 @@ export default function App() {
           {listening ? "🔴 Recording — tap mic or Stop to cancel" : "Hey there! How can I help you?"}
         </p>
       </div>
+
+      {/* ── Toast notification ── */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#1e293b", color: "#fff", padding: "10px 20px",
+          borderRadius: 8, fontSize: 14, zIndex: 9999,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)", whiteSpace: "nowrap",
+        }}>
+          {toast}
+        </div>
+      )}
+
     </div>
   );
 }
