@@ -107,6 +107,12 @@ export default function App() {
   const silenceTimerRef = useRef(null);
   const editInputRef = useRef(null);
   const chatScrollRef = useRef(null);
+  const tokenRef = useRef(token);
+  const currentSessionIdRef = useRef(currentSessionId);
+
+  // Keep refs in sync so async callbacks always have latest values
+  useEffect(() => { tokenRef.current = token; }, [token]);
+  useEffect(() => { currentSessionIdRef.current = currentSessionId; }, [currentSessionId]);
 
   const LANGUAGES = [
     { code: "en-US", label: "English", flag: "🇺🇸" },
@@ -167,7 +173,7 @@ export default function App() {
   const loadSessions = async () => {
     try {
       const res = await fetch(`${API}/sessions`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
       });
       const data = await res.json();
       if (data.sessions) setSessions(data.sessions);
@@ -176,54 +182,86 @@ export default function App() {
     }
   };
 
-  const startNewSession = async () => {
-    // Save current session first if it has messages
-    if (currentSessionId && messages.length > 0) {
-      await saveCurrentSession();
-    }
-    setMessages([]);
-    setCurrentSessionId(null);
-    setDrawerOpen(false);
-    setMenuOpen(false);
-  };
+  const saveCurrentSession = async (msgs = null) => {
+    // msgs param lets us pass fresh state directly (avoids stale closure)
+    const msgsToSave = msgs;
+    if (!msgsToSave || !msgsToSave.length) return;
 
-  const saveCurrentSession = async (msgs = messages) => {
-    if (!msgs.length) return;
-    const title = msgs.find((m) => m.role === "user")?.text?.slice(0, 50) || "New Chat";
+    const title =
+      msgsToSave.find((m) => m.role === "user")?.text?.slice(0, 50) || "New Chat";
+
     try {
-      if (currentSessionId) {
-        await fetch(`${API}/sessions/${currentSessionId}`, {
+      const sessId = currentSessionIdRef.current;
+      if (sessId) {
+        await fetch(`${API}/sessions/${sessId}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${tokenRef.current}`,
+          },
           body: JSON.stringify({
             title,
-            messages: msgs.map((m) => ({ role: m.role, text: m.text, time: m.time })),
+            messages: msgsToSave.map((m) => ({
+              role: m.role,
+              text: m.text,
+              time: m.time,
+            })),
           }),
         });
       } else {
         const res = await fetch(`${API}/sessions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${tokenRef.current}`,
+          },
           body: JSON.stringify({
             title,
-            messages: msgs.map((m) => ({ role: m.role, text: m.text, time: m.time })),
+            messages: msgsToSave.map((m) => ({
+              role: m.role,
+              text: m.text,
+              time: m.time,
+            })),
           }),
         });
         const data = await res.json();
-        if (data.session) setCurrentSessionId(data.session._id);
+        if (data.session) {
+          setCurrentSessionId(data.session._id);
+          currentSessionIdRef.current = data.session._id;
+        }
       }
-      loadSessions();
+      // Always refresh sidebar after save
+      await loadSessions();
     } catch (err) {
       console.error("Failed to save session", err);
     }
   };
 
+  const startNewSession = async () => {
+    // Save current messages before clearing
+    setMessages((prev) => {
+      if (prev.length > 0) {
+        // Fire-and-forget save with current messages
+        saveCurrentSession(prev).then(() => loadSessions());
+      }
+      return [];
+    });
+    setCurrentSessionId(null);
+    currentSessionIdRef.current = null;
+    setDrawerOpen(false);
+    setMenuOpen(false);
+  };
+
   const loadSession = async (sessionId) => {
     try {
       // Save current first
-      if (messages.length > 0) await saveCurrentSession();
+      setMessages((prev) => {
+        if (prev.length > 0) saveCurrentSession(prev);
+        return prev;
+      });
+
       const res = await fetch(`${API}/sessions/${sessionId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
       });
       const data = await res.json();
       if (data.session) {
@@ -235,6 +273,7 @@ export default function App() {
         }));
         setMessages(formatted);
         setCurrentSessionId(sessionId);
+        currentSessionIdRef.current = sessionId;
         setDrawerOpen(false);
         setMenuOpen(false);
       }
@@ -247,14 +286,15 @@ export default function App() {
     try {
       await fetch(`${API}/sessions/${sessionId}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
       });
-      if (currentSessionId === sessionId) {
+      if (currentSessionIdRef.current === sessionId) {
         setMessages([]);
         setCurrentSessionId(null);
+        currentSessionIdRef.current = null;
       }
       setDeleteConfirmId(null);
-      loadSessions();
+      await loadSessions();
     } catch (err) {
       console.error("Failed to delete session", err);
     }
@@ -263,6 +303,7 @@ export default function App() {
   const handleClearChat = () => {
     setMessages([]);
     setCurrentSessionId(null);
+    currentSessionIdRef.current = null;
     setMenuOpen(false);
   };
 
@@ -318,6 +359,7 @@ export default function App() {
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
         setToken(data.token);
+        tokenRef.current = data.token;
         setUser(data.user);
         setAuthForm(EMPTY_FORM);
       }
@@ -331,10 +373,12 @@ export default function App() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setToken("");
+    tokenRef.current = "";
     setUser(null);
     setMessages([]);
     setSessions([]);
     setCurrentSessionId(null);
+    currentSessionIdRef.current = null;
     setAuthForm(EMPTY_FORM);
     setAuthError("");
     setAuthMode("login");
@@ -391,7 +435,7 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${tokenRef.current}`,
         },
         body: JSON.stringify({ message: userText }),
       });
@@ -399,7 +443,6 @@ export default function App() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let firstChunk = true;
-      let finalBotText = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -413,13 +456,17 @@ export default function App() {
               stopThinkingAnimation();
               setLoading(false);
               speak(fullReplyRef.current);
-              // Auto-save session after bot reply
-              const updatedMessages = [
-                ...messages.filter((m) => !m.thinking),
-                newUserMsg,
-                { role: "bot", text: fullReplyRef.current, time: now, id: botId },
-              ];
-              saveCurrentSession(updatedMessages);
+              // Use setMessages callback to get fresh state, then save
+              setMessages((prev) => {
+                const updatedMessages = prev.map((m) =>
+                  m.id === botId
+                    ? { ...m, text: fullReplyRef.current, thinking: false }
+                    : m
+                );
+                // Save with fresh messages (no stale closure)
+                saveCurrentSession(updatedMessages);
+                return updatedMessages;
+              });
               break;
             }
             try {
@@ -432,7 +479,6 @@ export default function App() {
                   setLoading(false);
                 }
                 fullReplyRef.current += token_text;
-                finalBotText = fullReplyRef.current;
                 setMessages((prev) => {
                   const updated = [...prev];
                   updated[updated.length - 1] = {
