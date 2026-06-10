@@ -1,3 +1,5 @@
+// backend/routes/sessionRoutes.js
+
 const express = require("express");
 const router = express.Router();
 const auth = require("../middleware/authMiddleware");
@@ -33,10 +35,11 @@ router.get("/:id", auth, async (req, res) => {
 // Create new session
 router.post("/", auth, async (req, res) => {
   try {
+    const { title, messages } = req.body;
     const session = await ChatSession.create({
       userId: req.user._id,
-      title: "New Chat",
-      messages: [],
+      title: title || "New Chat",
+      messages: messages || [],
     });
     res.json({ session });
   } catch (err) {
@@ -54,7 +57,7 @@ router.patch("/:id", auth, async (req, res) => {
     const session = await ChatSession.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id },
       update,
-      { new: true }
+      { returnDocument: "after" } // ← fixed deprecated option
     );
     res.json({ session });
   } catch (err) {
