@@ -1042,6 +1042,20 @@ body {
 @media (max-width: 768px) {
   .desktop-only { display: none !important; }
   .mobile-only  { display: flex !important; }
+
+  /* Fix navbar disappearing on real mobile browsers */
+  .topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+  }
+
+  /* Push content down so it doesn't hide behind fixed navbar */
+  .chat-app {
+    padding-top: 56px;
+  }
 }
 
 @media (max-width: 640px) {
