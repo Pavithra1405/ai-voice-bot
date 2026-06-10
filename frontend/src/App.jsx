@@ -40,7 +40,6 @@ function formatTime(date) {
   return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// ── Theme toggle icon ──
 function SunIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -61,9 +60,7 @@ function MoonIcon() {
 }
 
 export default function App() {
-  // ── Theme ──
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
-
   const [token, setToken] = useState(localStorage.getItem("token") || "");
   const [user, setUser] = useState(JSON.parse(localStorage.getItem("user") || "null"));
   const [authMode, setAuthMode] = useState("login");
@@ -80,12 +77,18 @@ export default function App() {
   const [langOpen, setLangOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [playingId, setPlayingId] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
+
   const chatEndRef = useRef(null);
   const fullReplyRef = useRef("");
   const langRef = useRef(null);
+  const menuRef = useRef(null);
   const thinkingTimerRef = useRef(null);
   const recognitionRef = useRef(null);
   const silenceTimerRef = useRef(null);
+  const editInputRef = useRef(null);
 
   const LANGUAGES = [
     { code: "en-US", label: "English", flag: "🇺🇸" },
@@ -100,7 +103,6 @@ export default function App() {
 
   const currentLang = LANGUAGES.find((l) => l.code === language);
 
-  // ── Apply theme to <html> ──
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
@@ -116,9 +118,11 @@ export default function App() {
     if (token) loadHistory();
   }, [token]);
 
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClick = (e) => {
       if (langRef.current && !langRef.current.contains(e.target)) setLangOpen(false);
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -131,6 +135,14 @@ export default function App() {
       if (recognitionRef.current) recognitionRef.current.abort();
     };
   }, []);
+
+  // Focus edit input when editing starts
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
 
   const startThinkingAnimation = () => {
     setThinkingStage(0);
@@ -218,12 +230,47 @@ export default function App() {
     setAuthForm(EMPTY_FORM);
     setAuthError("");
     setAuthMode("login");
+    setMenuOpen(false);
   };
 
   const switchAuthMode = () => {
     setAuthMode((m) => (m === "login" ? "register" : "login"));
     setAuthForm(EMPTY_FORM);
     setAuthError("");
+  };
+
+  // ── New Chat ──
+  const handleNewChat = () => {
+    setMessages([]);
+    setInput("");
+    setMenuOpen(false);
+  };
+
+  // ── Clear Chat ──
+  const handleClearChat = () => {
+    setMessages([]);
+    setMenuOpen(false);
+  };
+
+  // ── Edit Message ──
+  const startEdit = (msg) => {
+    setEditingId(msg.id);
+    setEditText(msg.text);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText("");
+  };
+
+  const submitEdit = (msgIndex) => {
+    if (!editText.trim()) return;
+    // Remove the user message and all messages after it, then resend
+    const messagesUpToEdit = messages.slice(0, msgIndex);
+    setMessages(messagesUpToEdit);
+    setEditingId(null);
+    setEditText("");
+    sendMessage(editText.trim());
   };
 
   const sendMessage = async (text) => {
@@ -391,12 +438,9 @@ export default function App() {
     return (
       <div className="auth-page">
         <div className="auth-glow" />
-
-        {/* Theme toggle on auth page */}
         <button className="theme-toggle auth-theme-toggle" onClick={toggleTheme} title="Toggle theme">
           {theme === "dark" ? <SunIcon /> : <MoonIcon />}
         </button>
-
         <div className="auth-card">
           <div className="auth-logo">
             <div className="auth-logo-icon"><NeuralIcon size={30} /></div>
@@ -452,9 +496,9 @@ export default function App() {
           <span className="topbar-title">AI Voice Bot</span>
           <span className="online-dot" title="Online" />
         </div>
-        <div className="topbar-right">
 
-          {/* ── Theme toggle button ── */}
+        {/* ── Desktop right controls ── */}
+        <div className="topbar-right desktop-only">
           <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
@@ -486,11 +530,104 @@ export default function App() {
             )}
           </div>
 
+          <button className="icon-btn" onClick={handleNewChat} title="New chat">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          <button className="icon-btn" onClick={handleClearChat} title="Clear chat">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </button>
+
           <div className="user-chip">
             <div className="user-avatar">{user?.name?.[0]?.toUpperCase()}</div>
             <span className="user-name">{user?.name}</span>
           </div>
           <button className="logout-btn" onClick={handleLogout}>Sign out</button>
+        </div>
+
+        {/* ── Mobile: hamburger ── */}
+        <div className="topbar-right mobile-only" ref={menuRef}>
+          <button className="hamburger-btn" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
+            {menuOpen ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
+
+          {menuOpen && (
+            <div className="mobile-menu">
+              {/* User info */}
+              <div className="mobile-menu-user">
+                <div className="user-avatar">{user?.name?.[0]?.toUpperCase()}</div>
+                <span className="mobile-menu-username">{user?.name}</span>
+              </div>
+              <div className="mobile-menu-divider" />
+
+              {/* Theme toggle */}
+              <button className="mobile-menu-item" onClick={() => { toggleTheme(); setMenuOpen(false); }}>
+                {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+                <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+              </button>
+
+              {/* Language selector */}
+              <div className="mobile-menu-item mobile-lang-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" stroke="currentColor" strokeWidth="2"/>
+                </svg>
+                <span>Language</span>
+                <select
+                  className="mobile-lang-select"
+                  value={language}
+                  onChange={(e) => { setLanguage(e.target.value); setMenuOpen(false); }}
+                >
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>{l.flag} {l.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* New chat */}
+              <button className="mobile-menu-item" onClick={handleNewChat}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <span>New chat</span>
+              </button>
+
+              {/* Clear chat */}
+              <button className="mobile-menu-item" onClick={handleClearChat}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                <span>Clear chat</span>
+              </button>
+
+              <div className="mobile-menu-divider" />
+
+              {/* Sign out */}
+              <button className="mobile-menu-item mobile-menu-logout" onClick={handleLogout}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span>Sign out</span>
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -517,20 +654,53 @@ export default function App() {
                 </div>
               )}
               <div className="msg-col">
-                <div className={`msg-bubble ${msg.role}`}>
-                  {msg.thinking ? (
-                    <div className="thinking-block">
-                      <div className="thinking-orbs"><span /><span /><span /></div>
-                      <span className="thinking-label">{THINKING_STAGES[thinkingStage]}</span>
+                {/* Edit mode for user messages */}
+                {msg.role === "user" && editingId === msg.id ? (
+                  <div className="edit-wrap">
+                    <textarea
+                      ref={editInputRef}
+                      className="edit-input"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitEdit(i); }
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      rows={3}
+                    />
+                    <div className="edit-actions">
+                      <button className="edit-cancel-btn" onClick={cancelEdit}>Cancel</button>
+                      <button className="edit-submit-btn" onClick={() => submitEdit(i)}>Send</button>
                     </div>
-                  ) : (msg.text || "")}
-                </div>
+                  </div>
+                ) : (
+                  <div className={`msg-bubble ${msg.role}`}>
+                    {msg.thinking ? (
+                      <div className="thinking-block">
+                        <div className="thinking-orbs"><span /><span /><span /></div>
+                        <span className="thinking-label">{THINKING_STAGES[thinkingStage]}</span>
+                      </div>
+                    ) : (msg.text || "")}
+                  </div>
+                )}
 
-                {!msg.thinking && msg.text && (
+                {!msg.thinking && msg.text && editingId !== msg.id && (
                   <div className={`msg-meta ${msg.role}`}>
                     <span className="msg-time">
                       {msg.time ? formatTime(msg.time) : ""}
                     </span>
+                    {/* Edit button — only for user messages */}
+                    {msg.role === "user" && (
+                      <button
+                        className="msg-action-btn"
+                        onClick={() => startEdit(msg)}
+                        title="Edit"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                          <path d="M11.5 2.5a1.414 1.414 0 012 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    )}
                     <button
                       className={`msg-action-btn ${copiedId === msg.id ? "action-success" : ""}`}
                       onClick={() => copyMessage(msg.text, msg.id)}
