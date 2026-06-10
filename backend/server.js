@@ -9,22 +9,22 @@ const connectDB = require("./config/db");
 const chatRoutes = require("./routes/chatRoutes");
 const authRoutes = require("./routes/authRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
-app.use("/api/sessions", sessionRoutes);
 
 connectDB();
 
-const app = express();
+const app = express(); // ← app created first
 
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://ai-voice-bot-nu.vercel.app"  // your actual Vercel URL
+    "https://ai-voice-bot-nu.vercel.app"
   ]
 }));
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/sessions", sessionRoutes); // ← moved here, after app exists
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
