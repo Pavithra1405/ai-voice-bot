@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import "./App.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -40,6 +40,16 @@ function formatTime(date) {
   return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatDate(date) {
+  const d = new Date(date);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 function SunIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -67,19 +77,26 @@ export default function App() {
   const [authForm, setAuthForm] = useState(EMPTY_FORM);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+
+  // Chat state
   const [messages, setMessages] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [sessions, setSessions] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [thinkingStage, setThinkingStage] = useState(0);
+
+  // UI state
   const [listening, setListening] = useState(false);
-  const [listenStatus, setListenStatus] = useState("idle");
   const [language, setLanguage] = useState("en-US");
   const [langOpen, setLangOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [playingId, setPlayingId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const chatEndRef = useRef(null);
   const fullReplyRef = useRef("");
@@ -89,6 +106,7 @@ export default function App() {
   const recognitionRef = useRef(null);
   const silenceTimerRef = useRef(null);
   const editInputRef = useRef(null);
+  const chatScrollRef = useRef(null);
 
   const LANGUAGES = [
     { code: "en-US", label: "English", flag: "🇺🇸" },
@@ -115,10 +133,12 @@ export default function App() {
   }, [messages]);
 
   useEffect(() => {
-    if (token) loadHistory();
+    if (token) {
+      loadSessions();
+      startNewSession();
+    }
   }, [token]);
 
-  // Close dropdowns on outside click
   useEffect(() => {
     const handleClick = (e) => {
       if (langRef.current && !langRef.current.contains(e.target)) setLangOpen(false);
@@ -136,7 +156,6 @@ export default function App() {
     };
   }, []);
 
-  // Focus edit input when editing starts
   useEffect(() => {
     if (editingId && editInputRef.current) {
       editInputRef.current.focus();
@@ -144,6 +163,110 @@ export default function App() {
     }
   }, [editingId]);
 
+  // ── Session management ──────────────────────────────────
+  const loadSessions = async () => {
+    try {
+      const res = await fetch(`${API}/sessions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.sessions) setSessions(data.sessions);
+    } catch (err) {
+      console.error("Failed to load sessions", err);
+    }
+  };
+
+  const startNewSession = async () => {
+    // Save current session first if it has messages
+    if (currentSessionId && messages.length > 0) {
+      await saveCurrentSession();
+    }
+    setMessages([]);
+    setCurrentSessionId(null);
+    setDrawerOpen(false);
+    setMenuOpen(false);
+  };
+
+  const saveCurrentSession = async (msgs = messages) => {
+    if (!msgs.length) return;
+    const title = msgs.find((m) => m.role === "user")?.text?.slice(0, 50) || "New Chat";
+    try {
+      if (currentSessionId) {
+        await fetch(`${API}/sessions/${currentSessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            title,
+            messages: msgs.map((m) => ({ role: m.role, text: m.text, time: m.time })),
+          }),
+        });
+      } else {
+        const res = await fetch(`${API}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            title,
+            messages: msgs.map((m) => ({ role: m.role, text: m.text, time: m.time })),
+          }),
+        });
+        const data = await res.json();
+        if (data.session) setCurrentSessionId(data.session._id);
+      }
+      loadSessions();
+    } catch (err) {
+      console.error("Failed to save session", err);
+    }
+  };
+
+  const loadSession = async (sessionId) => {
+    try {
+      // Save current first
+      if (messages.length > 0) await saveCurrentSession();
+      const res = await fetch(`${API}/sessions/${sessionId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.session) {
+        const formatted = data.session.messages.map((m, i) => ({
+          role: m.role,
+          text: m.text,
+          time: new Date(m.time),
+          id: sessionId + i,
+        }));
+        setMessages(formatted);
+        setCurrentSessionId(sessionId);
+        setDrawerOpen(false);
+        setMenuOpen(false);
+      }
+    } catch (err) {
+      console.error("Failed to load session", err);
+    }
+  };
+
+  const deleteSession = async (sessionId) => {
+    try {
+      await fetch(`${API}/sessions/${sessionId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (currentSessionId === sessionId) {
+        setMessages([]);
+        setCurrentSessionId(null);
+      }
+      setDeleteConfirmId(null);
+      loadSessions();
+    } catch (err) {
+      console.error("Failed to delete session", err);
+    }
+  };
+
+  const handleClearChat = () => {
+    setMessages([]);
+    setCurrentSessionId(null);
+    setMenuOpen(false);
+  };
+
+  // ── Thinking animation ──────────────────────────────────
   const startThinkingAnimation = () => {
     setThinkingStage(0);
     let stage = 0;
@@ -174,24 +297,7 @@ export default function App() {
     }, 2500);
   };
 
-  const loadHistory = async () => {
-    try {
-      const res = await fetch(`${API}/chat/history`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.history) {
-        const formatted = data.history.reverse().flatMap((h) => [
-          { role: "user", text: h.userMessage, time: new Date(h.createdAt), id: h._id + "u" },
-          { role: "bot",  text: h.botReply,    time: new Date(h.createdAt), id: h._id + "b" },
-        ]);
-        setMessages(formatted);
-      }
-    } catch (err) {
-      console.error("History load failed", err);
-    }
-  };
-
+  // ── Auth ────────────────────────────────────────────────
   const handleAuthSubmit = async () => {
     setAuthError("");
     setAuthLoading(true);
@@ -227,10 +333,13 @@ export default function App() {
     setToken("");
     setUser(null);
     setMessages([]);
+    setSessions([]);
+    setCurrentSessionId(null);
     setAuthForm(EMPTY_FORM);
     setAuthError("");
     setAuthMode("login");
     setMenuOpen(false);
+    setDrawerOpen(false);
   };
 
   const switchAuthMode = () => {
@@ -239,20 +348,7 @@ export default function App() {
     setAuthError("");
   };
 
-  // ── New Chat ──
-  const handleNewChat = () => {
-    setMessages([]);
-    setInput("");
-    setMenuOpen(false);
-  };
-
-  // ── Clear Chat ──
-  const handleClearChat = () => {
-    setMessages([]);
-    setMenuOpen(false);
-  };
-
-  // ── Edit Message ──
+  // ── Edit message ────────────────────────────────────────
   const startEdit = (msg) => {
     setEditingId(msg.id);
     setEditText(msg.text);
@@ -265,7 +361,6 @@ export default function App() {
 
   const submitEdit = (msgIndex) => {
     if (!editText.trim()) return;
-    // Remove the user message and all messages after it, then resend
     const messagesUpToEdit = messages.slice(0, msgIndex);
     setMessages(messagesUpToEdit);
     setEditingId(null);
@@ -273,18 +368,23 @@ export default function App() {
     sendMessage(editText.trim());
   };
 
+  // ── Send message ────────────────────────────────────────
   const sendMessage = async (text) => {
     const userText = text || input.trim();
     if (!userText) return;
     const now = new Date();
     const userId = "u" + Date.now();
     const botId  = "b" + Date.now();
-    setMessages((prev) => [...prev, { role: "user", text: userText, time: now, id: userId }]);
+
+    const newUserMsg = { role: "user", text: userText, time: now, id: userId };
+    const newBotMsg  = { role: "bot", text: "", thinking: true, time: now, id: botId };
+
+    setMessages((prev) => [...prev, newUserMsg]);
     setInput("");
     setLoading(true);
     startThinkingAnimation();
     fullReplyRef.current = "";
-    setMessages((prev) => [...prev, { role: "bot", text: "", thinking: true, time: now, id: botId }]);
+    setMessages((prev) => [...prev, newBotMsg]);
 
     try {
       const res = await fetch(`${API}/chat`, {
@@ -299,6 +399,7 @@ export default function App() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let firstChunk = true;
+      let finalBotText = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -312,6 +413,13 @@ export default function App() {
               stopThinkingAnimation();
               setLoading(false);
               speak(fullReplyRef.current);
+              // Auto-save session after bot reply
+              const updatedMessages = [
+                ...messages.filter((m) => !m.thinking),
+                newUserMsg,
+                { role: "bot", text: fullReplyRef.current, time: now, id: botId },
+              ];
+              saveCurrentSession(updatedMessages);
               break;
             }
             try {
@@ -324,6 +432,7 @@ export default function App() {
                   setLoading(false);
                 }
                 fullReplyRef.current += token_text;
+                finalBotText = fullReplyRef.current;
                 setMessages((prev) => {
                   const updated = [...prev];
                   updated[updated.length - 1] = {
@@ -382,6 +491,7 @@ export default function App() {
     window.speechSynthesis.speak(utter);
   };
 
+  // ── Voice ───────────────────────────────────────────────
   const startListening = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) { alert("Your browser doesn't support voice input."); return; }
@@ -392,7 +502,6 @@ export default function App() {
     recognition.continuous = false;
     recognitionRef.current = recognition;
     setListening(true);
-    setListenStatus("listening");
     resetSilenceTimer();
     recognition.onstart = () => resetSilenceTimer();
     recognition.onspeechstart = () => clearSilenceTimer();
@@ -402,7 +511,6 @@ export default function App() {
       const isFinal = e.results[e.results.length - 1].isFinal;
       const transcript = e.results[e.results.length - 1][0].transcript;
       if (isFinal) {
-        setListenStatus("processing");
         setListening(false);
         recognitionRef.current = null;
         sendMessage(transcript);
@@ -411,13 +519,11 @@ export default function App() {
     recognition.onerror = () => {
       clearSilenceTimer();
       setListening(false);
-      setListenStatus("idle");
       recognitionRef.current = null;
     };
     recognition.onend = () => {
       clearSilenceTimer();
       setListening(false);
-      setListenStatus("idle");
       recognitionRef.current = null;
     };
     recognition.start();
@@ -430,8 +536,15 @@ export default function App() {
       recognitionRef.current = null;
     }
     setListening(false);
-    setListenStatus("idle");
   };
+
+  // Group sessions by date
+  const groupedSessions = sessions.reduce((groups, session) => {
+    const label = formatDate(session.updatedAt);
+    if (!groups[label]) groups[label] = [];
+    groups[label].push(session);
+    return groups;
+  }, {});
 
   // ─── AUTH UI ─────────────────────────────────────────────
   if (!token) {
@@ -490,14 +603,102 @@ export default function App() {
   // ─── CHAT UI ─────────────────────────────────────────────
   return (
     <div className="chat-app">
+
+      {/* ── Drawer overlay ── */}
+      {drawerOpen && (
+        <div className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
+      )}
+
+      {/* ── Left Drawer ── */}
+      <aside className={`drawer ${drawerOpen ? "drawer--open" : ""}`}>
+        <div className="drawer-header">
+          <div className="drawer-logo">
+            <NeuralIcon size={18} />
+            <span>AI Voice Bot</span>
+          </div>
+          <button className="drawer-close" onClick={() => setDrawerOpen(false)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <button className="new-chat-btn" onClick={startNewSession}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          New Chat
+        </button>
+
+        <div className="drawer-sessions">
+          {sessions.length === 0 ? (
+            <p className="drawer-empty">No chats yet</p>
+          ) : (
+            Object.entries(groupedSessions).map(([label, group]) => (
+              <div key={label} className="session-group">
+                <p className="session-group-label">{label}</p>
+                {group.map((session) => (
+                  <div
+                    key={session._id}
+                    className={`session-item ${currentSessionId === session._id ? "session-item--active" : ""}`}
+                  >
+                    <button
+                      className="session-title"
+                      onClick={() => loadSession(session._id)}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <span>{session.title}</span>
+                    </button>
+                    {deleteConfirmId === session._id ? (
+                      <div className="delete-confirm">
+                        <button className="delete-yes" onClick={() => deleteSession(session._id)}>Delete</button>
+                        <button className="delete-no" onClick={() => setDeleteConfirmId(null)}>Cancel</button>
+                      </div>
+                    ) : (
+                      <button
+                        className="session-delete"
+                        onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(session._id); }}
+                        title="Delete"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                          <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="drawer-footer">
+          <div className="user-chip">
+            <div className="user-avatar">{user?.name?.[0]?.toUpperCase()}</div>
+            <span className="user-name">{user?.name}</span>
+          </div>
+          <button className="logout-btn" onClick={handleLogout}>Sign out</button>
+        </div>
+      </aside>
+
+      {/* ── Topbar ── */}
       <header className="topbar">
         <div className="topbar-left">
+          <button className="drawer-toggle" onClick={() => setDrawerOpen((o) => !o)} title="Chats">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
           <div className="topbar-logo"><NeuralIcon size={20} /></div>
           <span className="topbar-title">AI Voice Bot</span>
           <span className="online-dot" title="Online" />
         </div>
 
-        {/* ── Desktop right controls ── */}
+        {/* Desktop controls */}
         <div className="topbar-right desktop-only">
           <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
@@ -517,8 +718,7 @@ export default function App() {
                   <button key={l.code}
                     className={`lang-option ${l.code === language ? "lang-option--active" : ""}`}
                     onClick={() => { setLanguage(l.code); setLangOpen(false); }}>
-                    <span>{l.flag}</span>
-                    <span>{l.label}</span>
+                    <span>{l.flag}</span><span>{l.label}</span>
                     {l.code === language && (
                       <svg className="lang-check" width="14" height="14" viewBox="0 0 16 16" fill="none">
                         <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -530,7 +730,7 @@ export default function App() {
             )}
           </div>
 
-          <button className="icon-btn" onClick={handleNewChat} title="New chat">
+          <button className="icon-btn" onClick={startNewSession} title="New chat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -552,7 +752,7 @@ export default function App() {
           <button className="logout-btn" onClick={handleLogout}>Sign out</button>
         </div>
 
-        {/* ── Mobile: hamburger ── */}
+        {/* Mobile hamburger */}
         <div className="topbar-right mobile-only" ref={menuRef}>
           <button className="hamburger-btn" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
             {menuOpen ? (
@@ -568,58 +768,47 @@ export default function App() {
 
           {menuOpen && (
             <div className="mobile-menu">
-              {/* User info */}
               <div className="mobile-menu-user">
                 <div className="user-avatar">{user?.name?.[0]?.toUpperCase()}</div>
                 <span className="mobile-menu-username">{user?.name}</span>
               </div>
               <div className="mobile-menu-divider" />
 
-              {/* Theme toggle */}
               <button className="mobile-menu-item" onClick={() => { toggleTheme(); setMenuOpen(false); }}>
                 {theme === "dark" ? <SunIcon /> : <MoonIcon />}
                 <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
               </button>
 
-              {/* Language selector */}
               <div className="mobile-menu-item mobile-lang-row">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
                   <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" stroke="currentColor" strokeWidth="2"/>
                 </svg>
                 <span>Language</span>
-                <select
-                  className="mobile-lang-select"
-                  value={language}
-                  onChange={(e) => { setLanguage(e.target.value); setMenuOpen(false); }}
-                >
+                <select className="mobile-lang-select" value={language}
+                  onChange={(e) => { setLanguage(e.target.value); setMenuOpen(false); }}>
                   {LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>{l.flag} {l.label}</option>
                   ))}
                 </select>
               </div>
 
-              {/* New chat */}
-              <button className="mobile-menu-item" onClick={handleNewChat}>
+              <button className="mobile-menu-item" onClick={startNewSession}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
                 <span>New chat</span>
               </button>
 
-              {/* Clear chat */}
               <button className="mobile-menu-item" onClick={handleClearChat}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
                 <span>Clear chat</span>
               </button>
 
               <div className="mobile-menu-divider" />
-
-              {/* Sign out */}
               <button className="mobile-menu-item mobile-menu-logout" onClick={handleLogout}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -631,8 +820,9 @@ export default function App() {
         </div>
       </header>
 
+      {/* ── Chat area ── */}
       <main className="chat-main">
-        <div className="chat-scroll">
+        <div className="chat-scroll" ref={chatScrollRef}>
           {messages.length === 0 && (
             <div className="empty-state">
               <div className="empty-icon"><NeuralIcon size={44} /></div>
@@ -654,7 +844,6 @@ export default function App() {
                 </div>
               )}
               <div className="msg-col">
-                {/* Edit mode for user messages */}
                 {msg.role === "user" && editingId === msg.id ? (
                   <div className="edit-wrap">
                     <textarea
@@ -686,36 +875,26 @@ export default function App() {
 
                 {!msg.thinking && msg.text && editingId !== msg.id && (
                   <div className={`msg-meta ${msg.role}`}>
-                    <span className="msg-time">
-                      {msg.time ? formatTime(msg.time) : ""}
-                    </span>
-                    {/* Edit button — only for user messages */}
+                    <span className="msg-time">{msg.time ? formatTime(msg.time) : ""}</span>
                     {msg.role === "user" && (
-                      <button
-                        className="msg-action-btn"
-                        onClick={() => startEdit(msg)}
-                        title="Edit"
-                      >
+                      <button className="msg-action-btn" onClick={() => startEdit(msg)} title="Edit">
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                          <path d="M11.5 2.5a1.414 1.414 0 012 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M11.5 2.5a1.414 1.414 0 012 2L5 13H3v-2L11.5 2.5z"
+                            stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </button>
                     )}
                     <button
                       className={`msg-action-btn ${copiedId === msg.id ? "action-success" : ""}`}
-                      onClick={() => copyMessage(msg.text, msg.id)}
-                      title="Copy"
-                    >
+                      onClick={() => copyMessage(msg.text, msg.id)} title="Copy">
                       {copiedId === msg.id ? (
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                          <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" strokeWidth="2.2"
-                            strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       ) : (
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                           <rect x="5" y="5" width="8" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-                          <path d="M11 5V4a1 1 0 00-1-1H4a1 1 0 00-1 1v8a1 1 0 001 1h1"
-                            stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                          <path d="M11 5V4a1 1 0 00-1-1H4a1 1 0 00-1 1v8a1 1 0 001 1h1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                         </svg>
                       )}
                     </button>
@@ -723,8 +902,7 @@ export default function App() {
                       <button
                         className={`msg-action-btn ${playingId === msg.id ? "action-playing" : ""}`}
                         onClick={() => playMessage(msg.text, msg.id)}
-                        title={playingId === msg.id ? "Stop" : "Play"}
-                      >
+                        title={playingId === msg.id ? "Stop" : "Play"}>
                         {playingId === msg.id ? (
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                             <rect x="3" y="3" width="4" height="10" rx="1" fill="currentColor" />
@@ -732,8 +910,7 @@ export default function App() {
                           </svg>
                         ) : (
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                            <path d="M5 3.5l8 4.5-8 4.5V3.5z" stroke="currentColor" strokeWidth="1.4"
-                              strokeLinejoin="round" />
+                            <path d="M5 3.5l8 4.5-8 4.5V3.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
                           </svg>
                         )}
                       </button>
@@ -779,15 +956,13 @@ export default function App() {
             <button
               className={`mic-btn ${listening ? "mic-on" : ""}`}
               onClick={listening ? stopListening : startListening}
-              disabled={loading}
-            >
+              disabled={loading}>
               {listening ? (
                 <div className="mic-waveform"><span /><span /><span /></div>
               ) : (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
                   <rect x="8" y="3" width="8" height="12" rx="4" stroke="currentColor" strokeWidth="2" />
-                  <path d="M5 11C5 14.866 8.134 18 12 18C15.866 18 19 14.866 19 11"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M5 11C5 14.866 8.134 18 12 18C15.866 18 19 14.866 19 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   <path d="M12 18V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   <path d="M9 21H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
@@ -796,12 +971,10 @@ export default function App() {
             <button
               className="send-btn"
               onClick={() => sendMessage()}
-              disabled={loading || !input.trim() || listening}
-            >
+              disabled={loading || !input.trim() || listening}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
                 <path d="M12 19V5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-                <path d="M6.5 10.5L12 5L17.5 10.5" stroke="currentColor" strokeWidth="2.4"
-                  strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M6.5 10.5L12 5L17.5 10.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
           </div>

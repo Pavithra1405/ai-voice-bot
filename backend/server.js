@@ -8,6 +8,8 @@ const cors = require("cors");
 const connectDB = require("./config/db");
 const chatRoutes = require("./routes/chatRoutes");
 const authRoutes = require("./routes/authRoutes");
+const sessionRoutes = require("./routes/sessionRoutes");
+app.use("/api/sessions", sessionRoutes);
 
 connectDB();
 
