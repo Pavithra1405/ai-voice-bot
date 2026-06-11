@@ -127,11 +127,15 @@ function SharedChatView() {
 
 // ── Admin Panel ─────────────────────────────────────────────
 function AdminPanel({ token, onClose }) {
-  const [users, setUsers]               = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState("");
+  const [users, setUsers]                     = useState([]);
+  const [loading, setLoading]                 = useState(true);
+  const [error, setError]                     = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
-  const [toast, setToast]               = useState("");
+  const [toast, setToast]                     = useState("");
+  const [expandedUserId, setExpandedUserId]   = useState(null);
+  const [userSessions, setUserSessions]       = useState({});
+  const [sessionsLoading, setSessionsLoading] = useState({});
+  const [expandedSessionId, setExpandedSessionId] = useState(null);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -147,7 +151,7 @@ function AdminPanel({ token, onClose }) {
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to load users"); return; }
       setUsers(data.users);
-    } catch (err) {
+    } catch {
       setError("Failed to load users");
     } finally {
       setLoading(false);
@@ -168,7 +172,7 @@ function AdminPanel({ token, onClose }) {
         prev.map((u) => u._id === userId ? { ...u, isBanned: data.isBanned } : u)
       );
       showToast(data.isBanned ? "🚫 User banned" : "✅ User unbanned");
-    } catch (err) {
+    } catch {
       showToast("❌ Failed to update user");
     }
   };
@@ -182,37 +186,64 @@ function AdminPanel({ token, onClose }) {
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${data.message}`); return; }
       setUsers((prev) => prev.filter((u) => u._id !== userId));
+      if (expandedUserId === userId) setExpandedUserId(null);
       setDeleteConfirmId(null);
       showToast("🗑️ User deleted");
-    } catch (err) {
+    } catch {
       showToast("❌ Failed to delete user");
+    }
+  };
+
+  const toggleExpand = async (userId) => {
+    if (expandedUserId === userId) {
+      setExpandedUserId(null);
+      return;
+    }
+    setExpandedUserId(userId);
+    setExpandedSessionId(null);
+
+    // Already fetched — no need to refetch
+    if (userSessions[userId]) return;
+
+    setSessionsLoading((prev) => ({ ...prev, [userId]: true }));
+    try {
+      const res = await fetch(`${API}/admin/users/${userId}/sessions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(`❌ ${data.message || "Failed to load sessions"}`); return; }
+      setUserSessions((prev) => ({ ...prev, [userId]: data.sessions || [] }));
+    } catch {
+      showToast("❌ Failed to load sessions");
+    } finally {
+      setSessionsLoading((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
   return (
     <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,0.7)",
-      zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center",
-      padding:"16px", backdropFilter:"blur(6px)",
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+      zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "16px", backdropFilter: "blur(6px)",
     }}>
       <div style={{
-        background:"var(--bg2)", border:"1px solid var(--border2)",
-        borderRadius:20, width:"100%", maxWidth:860,
-        maxHeight:"90vh", display:"flex", flexDirection:"column",
-        boxShadow:"0 24px 64px rgba(0,0,0,0.4)",
+        background: "var(--bg2)", border: "1px solid var(--border2)",
+        borderRadius: 20, width: "100%", maxWidth: 900,
+        maxHeight: "90vh", display: "flex", flexDirection: "column",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
       }}>
-        {/* Header */}
+
+        {/* ── Header ── */}
         <div style={{
-          display:"flex", alignItems:"center", justifyContent:"space-between",
-          padding:"20px 24px", borderBottom:"1px solid var(--border)",
-          flexShrink:0,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "20px 24px", borderBottom: "1px solid var(--border)", flexShrink: 0,
         }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{
-              width:36, height:36, borderRadius:10,
-              background:"var(--accent-glow)", border:"1px solid var(--accent)",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              color:"var(--accent3)",
+              width: 36, height: 36, borderRadius: 10,
+              background: "var(--accent-glow)", border: "1px solid var(--accent)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "var(--accent3)",
             }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -221,19 +252,19 @@ function AdminPanel({ token, onClose }) {
               </svg>
             </div>
             <div>
-              <h2 style={{ margin:0, fontSize:"1.1rem", fontWeight:600, color:"var(--text)" }}>
+              <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 600, color: "var(--text)" }}>
                 Admin Panel
               </h2>
-              <p style={{ margin:0, fontSize:"0.78rem", color:"var(--text2)" }}>
+              <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--text2)" }}>
                 {users.length} user{users.length !== 1 ? "s" : ""} total
               </p>
             </div>
           </div>
           <button onClick={onClose} style={{
-            width:32, height:32, borderRadius:8,
-            border:"1px solid var(--border2)", background:"var(--bg3)",
-            color:"var(--text2)", cursor:"pointer",
-            display:"flex", alignItems:"center", justifyContent:"center",
+            width: 32, height: 32, borderRadius: 8,
+            border: "1px solid var(--border2)", background: "var(--bg3)",
+            color: "var(--text2)", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -241,166 +272,292 @@ function AdminPanel({ token, onClose }) {
           </button>
         </div>
 
-        {/* Body */}
-        <div style={{ flex:1, overflowY:"auto", padding:"16px 24px" }}>
+        {/* ── Body ── */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px" }}>
           {loading ? (
-            <div style={{ textAlign:"center", padding:"48px 0", color:"var(--text2)" }}>
-              Loading users...
-            </div>
+            <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text2)" }}>Loading users...</div>
           ) : error ? (
-            <div style={{ textAlign:"center", padding:"48px 0", color:"#ef4444" }}>
-              ❌ {error}
-            </div>
+            <div style={{ textAlign: "center", padding: "48px 0", color: "#ef4444" }}>❌ {error}</div>
           ) : users.length === 0 ? (
-            <div style={{ textAlign:"center", padding:"48px 0", color:"var(--text2)" }}>
-              No users found
-            </div>
+            <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text2)" }}>No users found</div>
           ) : (
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ borderBottom:"1px solid var(--border)" }}>
-                  {["User", "Email", "Chats", "Joined", "Status", "Actions"].map((h) => (
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  {["", "User", "Email", "Chats", "Joined", "Status", "Actions"].map((h) => (
                     <th key={h} style={{
-                      padding:"10px 12px", textAlign:"left",
-                      fontSize:"0.75rem", color:"var(--text3)",
-                      fontWeight:600, textTransform:"uppercase",
-                      letterSpacing:"0.05em", whiteSpace:"nowrap",
+                      padding: "10px 12px", textAlign: "left",
+                      fontSize: "0.75rem", color: "var(--text3)",
+                      fontWeight: 600, textTransform: "uppercase",
+                      letterSpacing: "0.05em", whiteSpace: "nowrap",
                     }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u._id} style={{
-                    borderBottom:"1px solid var(--border)",
-                    background: u.isBanned ? "rgba(239,68,68,0.04)" : "transparent",
-                    transition:"background 0.15s",
-                  }}>
-                    {/* User */}
-                    <td style={{ padding:"12px", whiteSpace:"nowrap" }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-                        <div style={{
-                          width:32, height:32, borderRadius:"50%",
-                          background: u.isAdmin ? "var(--accent)" : "var(--bg4)",
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          fontSize:"0.8rem", fontWeight:600, color:"white", flexShrink:0,
-                        }}>
-                          {u.name?.[0]?.toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontSize:"0.88rem", fontWeight:500, color:"var(--text)" }}>
-                            {u.name}
-                            {u.isAdmin && (
-                              <span style={{
-                                marginLeft:6, fontSize:"0.68rem", padding:"1px 6px",
-                                background:"var(--accent-glow)", color:"var(--accent3)",
-                                borderRadius:4, border:"1px solid var(--accent)",
-                              }}>Admin</span>
-                            )}
+                  <>
+                    {/* ── User row ── */}
+                    <tr
+                      key={u._id}
+                      onClick={() => toggleExpand(u._id)}
+                      style={{
+                        borderBottom: expandedUserId === u._id ? "none" : "1px solid var(--border)",
+                        background: u.isBanned ? "rgba(239,68,68,0.04)" : "transparent",
+                        cursor: "pointer",
+                        transition: "background 0.15s",
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg3)"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = u.isBanned ? "rgba(239,68,68,0.04)" : "transparent"}
+                    >
+                      {/* Chevron */}
+                      <td style={{ padding: "12px 8px 12px 12px", width: 20 }}>
+                        <svg
+                          width="14" height="14" viewBox="0 0 24 24" fill="none"
+                          style={{
+                            color: "var(--text3)",
+                            transform: expandedUserId === u._id ? "rotate(90deg)" : "rotate(0deg)",
+                            transition: "transform 0.2s",
+                          }}
+                        >
+                          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </td>
+
+                      {/* User */}
+                      <td style={{ padding: "12px", whiteSpace: "nowrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                          <div style={{
+                            width: 32, height: 32, borderRadius: "50%",
+                            background: u.isAdmin ? "var(--accent)" : "var(--bg4)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: "0.8rem", fontWeight: 600, color: "white", flexShrink: 0,
+                          }}>
+                            {u.name?.[0]?.toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: "0.88rem", fontWeight: 500, color: "var(--text)" }}>
+                              {u.name}
+                              {u.isAdmin && (
+                                <span style={{
+                                  marginLeft: 6, fontSize: "0.68rem", padding: "1px 6px",
+                                  background: "var(--accent-glow)", color: "var(--accent3)",
+                                  borderRadius: 4, border: "1px solid var(--accent)",
+                                }}>Admin</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Email */}
-                    <td style={{ padding:"12px", fontSize:"0.85rem", color:"var(--text2)" }}>
-                      {u.email}
-                    </td>
+                      {/* Email */}
+                      <td style={{ padding: "12px", fontSize: "0.85rem", color: "var(--text2)" }}>
+                        {u.email}
+                      </td>
 
-                    {/* Chats */}
-                    <td style={{ padding:"12px", fontSize:"0.85rem", color:"var(--text2)", textAlign:"center" }}>
-                      {u.sessionCount}
-                    </td>
+                      {/* Chats */}
+                      <td style={{ padding: "12px", fontSize: "0.85rem", color: "var(--text2)", textAlign: "center" }}>
+                        {u.sessionCount}
+                      </td>
 
-                    {/* Joined */}
-                    <td style={{ padding:"12px", fontSize:"0.83rem", color:"var(--text2)", whiteSpace:"nowrap" }}>
-                      {new Date(u.createdAt).toLocaleDateString([], { month:"short", day:"numeric", year:"numeric" })}
-                    </td>
+                      {/* Joined */}
+                      <td style={{ padding: "12px", fontSize: "0.83rem", color: "var(--text2)", whiteSpace: "nowrap" }}>
+                        {new Date(u.createdAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
+                      </td>
 
-                    {/* Status */}
-                    <td style={{ padding:"12px" }}>
-                      <span style={{
-                        padding:"3px 10px", borderRadius:20, fontSize:"0.76rem", fontWeight:500,
-                        background: u.isBanned ? "rgba(239,68,68,0.12)" : "rgba(34,197,94,0.1)",
-                        color: u.isBanned ? "#ef4444" : "#22c55e",
-                        border: `1px solid ${u.isBanned ? "rgba(239,68,68,0.25)" : "rgba(34,197,94,0.2)"}`,
-                      }}>
-                        {u.isBanned ? "Banned" : "Active"}
-                      </span>
-                    </td>
+                      {/* Status */}
+                      <td style={{ padding: "12px" }}>
+                        <span style={{
+                          padding: "3px 10px", borderRadius: 20, fontSize: "0.76rem", fontWeight: 500,
+                          background: u.isBanned ? "rgba(239,68,68,0.12)" : "rgba(34,197,94,0.1)",
+                          color: u.isBanned ? "#ef4444" : "#22c55e",
+                          border: `1px solid ${u.isBanned ? "rgba(239,68,68,0.25)" : "rgba(34,197,94,0.2)"}`,
+                        }}>
+                          {u.isBanned ? "Banned" : "Active"}
+                        </span>
+                      </td>
 
-                    {/* Actions */}
-                    <td style={{ padding:"12px" }}>
-                      {u.isAdmin ? (
-                        <span style={{ fontSize:"0.78rem", color:"var(--text3)" }}>—</span>
-                      ) : deleteConfirmId === u._id ? (
-                        <div style={{ display:"flex", gap:6 }}>
-                          <button onClick={() => deleteUser(u._id)} style={{
-                            padding:"4px 10px", background:"rgba(239,68,68,0.15)",
-                            border:"1px solid rgba(239,68,68,0.3)", color:"#ef4444",
-                            borderRadius:6, fontSize:"0.78rem", cursor:"pointer", fontFamily:"inherit",
-                          }}>Delete</button>
-                          <button onClick={() => setDeleteConfirmId(null)} style={{
-                            padding:"4px 10px", background:"transparent",
-                            border:"1px solid var(--border2)", color:"var(--text2)",
-                            borderRadius:6, fontSize:"0.78rem", cursor:"pointer", fontFamily:"inherit",
-                          }}>Cancel</button>
-                        </div>
-                      ) : (
-                        <div style={{ display:"flex", gap:6 }}>
-                          {/* Ban/Unban */}
-                          <button onClick={() => toggleBan(u._id)} title={u.isBanned ? "Unban" : "Ban"} style={{
-                            width:30, height:30, borderRadius:8,
-                            border:"1px solid var(--border2)", background:"var(--bg3)",
-                            color: u.isBanned ? "#22c55e" : "#f59e0b",
-                            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                          }}>
-                            {u.isBanned ? (
+                      {/* Actions */}
+                      <td style={{ padding: "12px" }} onClick={(e) => e.stopPropagation()}>
+                        {u.isAdmin ? (
+                          <span style={{ fontSize: "0.78rem", color: "var(--text3)" }}>—</span>
+                        ) : deleteConfirmId === u._id ? (
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => deleteUser(u._id)} style={{
+                              padding: "4px 10px", background: "rgba(239,68,68,0.15)",
+                              border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444",
+                              borderRadius: 6, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit",
+                            }}>Delete</button>
+                            <button onClick={() => setDeleteConfirmId(null)} style={{
+                              padding: "4px 10px", background: "transparent",
+                              border: "1px solid var(--border2)", color: "var(--text2)",
+                              borderRadius: 6, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit",
+                            }}>Cancel</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => toggleBan(u._id)} title={u.isBanned ? "Unban" : "Ban"} style={{
+                              width: 30, height: 30, borderRadius: 8,
+                              border: "1px solid var(--border2)", background: "var(--bg3)",
+                              color: u.isBanned ? "#22c55e" : "#f59e0b",
+                              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                            }}>
+                              {u.isBanned ? (
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                                  <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
+                                </svg>
+                              ) : (
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
+                                  <path d="M4.93 4.93l14.14 14.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                              )}
+                            </button>
+                            <button onClick={() => setDeleteConfirmId(u._id)} title="Delete user" style={{
+                              width: 30, height: 30, borderRadius: 8,
+                              border: "1px solid var(--border2)", background: "var(--bg3)",
+                              color: "var(--text3)", cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                            }}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                                <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
+                                <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                               </svg>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* ── Expanded sessions panel ── */}
+                    {expandedUserId === u._id && (
+                      <tr key={`${u._id}-expanded`}>
+                        <td colSpan={7} style={{ padding: 0, borderBottom: "1px solid var(--border)" }}>
+                          <div style={{
+                            background: "var(--bg3)", borderTop: "1px solid var(--border)",
+                            padding: "16px 20px",
+                          }}>
+                            {sessionsLoading[u._id] ? (
+                              <p style={{ margin: 0, fontSize: "0.84rem", color: "var(--text2)" }}>
+                                Loading sessions…
+                              </p>
+                            ) : !userSessions[u._id] || userSessions[u._id].length === 0 ? (
+                              <p style={{ margin: 0, fontSize: "0.84rem", color: "var(--text3)" }}>
+                                No chat sessions found for this user.
+                              </p>
                             ) : (
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
-                                <path d="M4.93 4.93l14.14 14.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                              </svg>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                <p style={{ margin: "0 0 8px", fontSize: "0.78rem", color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
+                                  {userSessions[u._id].length} session{userSessions[u._id].length !== 1 ? "s" : ""}
+                                </p>
+                                {userSessions[u._id].map((session) => (
+                                  <div key={session._id} style={{
+                                    border: "1px solid var(--border2)", borderRadius: 10,
+                                    background: "var(--bg2)", overflow: "hidden",
+                                  }}>
+                                    {/* Session header — click to toggle messages */}
+                                    <button
+                                      onClick={() => setExpandedSessionId(
+                                        expandedSessionId === session._id ? null : session._id
+                                      )}
+                                      style={{
+                                        width: "100%", display: "flex", alignItems: "center",
+                                        justifyContent: "space-between", padding: "10px 14px",
+                                        background: "transparent", border: "none",
+                                        cursor: "pointer", fontFamily: "inherit", color: "var(--text)",
+                                        gap: 8,
+                                      }}
+                                    >
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: "var(--text3)" }}>
+                                          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
+                                            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                        <span style={{
+                                          fontSize: "0.86rem", fontWeight: 500,
+                                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                                        }}>
+                                          {session.title || "Untitled Chat"}
+                                        </span>
+                                      </div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                                        <span style={{ fontSize: "0.76rem", color: "var(--text3)" }}>
+                                          {session.messages?.length || 0} msg{(session.messages?.length || 0) !== 1 ? "s" : ""}
+                                        </span>
+                                        <span style={{ fontSize: "0.76rem", color: "var(--text3)" }}>
+                                          {new Date(session.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                                        </span>
+                                        <svg
+                                          width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                          style={{
+                                            color: "var(--text3)",
+                                            transform: expandedSessionId === session._id ? "rotate(90deg)" : "rotate(0deg)",
+                                            transition: "transform 0.2s",
+                                          }}
+                                        >
+                                          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                      </div>
+                                    </button>
+
+                                    {/* Messages */}
+                                    {expandedSessionId === session._id && (
+                                      <div style={{
+                                        borderTop: "1px solid var(--border)",
+                                        padding: "12px 14px",
+                                        display: "flex", flexDirection: "column", gap: 8,
+                                        maxHeight: 360, overflowY: "auto",
+                                      }}>
+                                        {(!session.messages || session.messages.length === 0) ? (
+                                          <p style={{ margin: 0, fontSize: "0.83rem", color: "var(--text3)" }}>No messages.</p>
+                                        ) : session.messages.map((msg, idx) => (
+                                          <div key={idx} style={{
+                                            display: "flex",
+                                            justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                                          }}>
+                                            <div style={{
+                                              maxWidth: "75%", padding: "7px 12px", borderRadius: 10,
+                                              background: msg.role === "user" ? "var(--accent)" : "var(--bg4)",
+                                              color: msg.role === "user" ? "#fff" : "var(--text)",
+                                              fontSize: "0.83rem", lineHeight: 1.5,
+                                            }}>
+                                              <div style={{ fontSize: "0.7rem", opacity: 0.65, marginBottom: 3, fontWeight: 600 }}>
+                                                {msg.role === "user" ? "User" : "Bot"}
+                                              </div>
+                                              {msg.text}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
                             )}
-                          </button>
-                          {/* Delete */}
-                          <button onClick={() => setDeleteConfirmId(u._id)} title="Delete user" style={{
-                            width:30, height:30, borderRadius:8,
-                            border:"1px solid var(--border2)", background:"var(--bg3)",
-                            color:"var(--text3)", cursor:"pointer",
-                            display:"flex", alignItems:"center", justifyContent:"center",
-                          }}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                              <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            </svg>
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
           )}
         </div>
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <div style={{
-          padding:"14px 24px", borderTop:"1px solid var(--border)",
-          flexShrink:0, display:"flex", justifyContent:"space-between", alignItems:"center",
+          padding: "14px 24px", borderTop: "1px solid var(--border)",
+          flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center",
         }}>
-          <p style={{ margin:0, fontSize:"0.78rem", color:"var(--text3)" }}>
+          <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--text3)" }}>
             Only you can see this panel
           </p>
           <button onClick={loadUsers} style={{
-            padding:"7px 16px", background:"var(--bg3)",
-            border:"1px solid var(--border2)", color:"var(--text2)",
-            borderRadius:8, fontSize:"0.84rem", cursor:"pointer", fontFamily:"inherit",
+            padding: "7px 16px", background: "var(--bg3)",
+            border: "1px solid var(--border2)", color: "var(--text2)",
+            borderRadius: 8, fontSize: "0.84rem", cursor: "pointer", fontFamily: "inherit",
           }}>
             🔄 Refresh
           </button>
@@ -410,10 +567,10 @@ function AdminPanel({ token, onClose }) {
       {/* Toast */}
       {toast && (
         <div style={{
-          position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)",
-          background:"#1e293b", color:"#fff", padding:"10px 20px",
-          borderRadius:8, fontSize:14, zIndex:9999,
-          boxShadow:"0 4px 12px rgba(0,0,0,0.3)", whiteSpace:"nowrap",
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#1e293b", color: "#fff", padding: "10px 20px",
+          borderRadius: 8, fontSize: 14, zIndex: 9999,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)", whiteSpace: "nowrap",
         }}>
           {toast}
         </div>

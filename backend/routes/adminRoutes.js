@@ -16,7 +16,6 @@ router.get("/users", async (req, res) => {
       .select("-password")
       .sort({ createdAt: -1 });
 
-    // Get session count per user
     const usersWithStats = await Promise.all(
       users.map(async (user) => {
         const sessionCount = await ChatSession.countDocuments({
@@ -40,18 +39,27 @@ router.get("/users", async (req, res) => {
   }
 });
 
+// GET all sessions for a specific user
+router.get("/users/:id/sessions", async (req, res) => {
+  try {
+    const sessions = await ChatSession.find({ userId: req.params.id })
+      .sort({ updatedAt: -1 });
+    res.json({ sessions });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch sessions" });
+  }
+});
+
 // PATCH toggle ban/unban user
 router.patch("/users/:id/ban", async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Prevent banning yourself
     if (user._id.toString() === req.user._id.toString()) {
       return res.status(400).json({ message: "You cannot ban yourself" });
     }
 
-    // Prevent banning other admins
     if (user.isAdmin) {
       return res.status(400).json({ message: "Cannot ban another admin" });
     }
@@ -71,17 +79,14 @@ router.delete("/users/:id", async (req, res) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Prevent deleting yourself
     if (user._id.toString() === req.user._id.toString()) {
       return res.status(400).json({ message: "You cannot delete yourself" });
     }
 
-    // Prevent deleting other admins
     if (user.isAdmin) {
       return res.status(400).json({ message: "Cannot delete another admin" });
     }
 
-    // Delete user and all their sessions
     await User.findByIdAndDelete(req.params.id);
     await ChatSession.deleteMany({ userId: req.params.id });
 
