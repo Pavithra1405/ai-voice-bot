@@ -854,7 +854,7 @@ body {
 
 @media (max-width: 640px) {
   .topbar { padding: 10px 14px; }
-  .chat-scroll { padding: 18px 14px 12px; }
+  .chat-scroll { padding: 80px 14px 12px; }
   .input-dock { padding: 10px 14px 16px; }
   .msg-col { max-width: 88%; }
   .msg-bubble { font-size: 0.91rem; }
