@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -69,7 +69,7 @@ function MoonIcon() {
   );
 }
 
-// ── Shared Chat View (public read-only) ─────────────────────
+// ── Shared Chat View ────────────────────────────────────────
 function SharedChatView() {
   const [messages, setMessages] = useState([]);
   const [title, setTitle]       = useState("");
@@ -79,7 +79,6 @@ function SharedChatView() {
   useEffect(() => {
     const shareId = window.location.pathname.split("/shared/")[1];
     if (!shareId) { setError("Invalid link."); setLoading(false); return; }
-
     fetch(`${API}/sessions/shared/${shareId}`)
       .then((r) => r.json())
       .then((data) => {
@@ -93,16 +92,14 @@ function SharedChatView() {
 
   if (loading) return (
     <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", fontSize:16 }}>
-      <NeuralIcon size={28} /> &nbsp; Loading shared chat...
+      <NeuralIcon size={28} />&nbsp;Loading shared chat...
     </div>
   );
-
   if (error) return (
     <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", fontSize:16, color:"#ef4444" }}>
       ❌ {error}
     </div>
   );
-
   return (
     <div style={{ maxWidth:720, margin:"0 auto", padding:"32px 16px", fontFamily:"sans-serif" }}>
       <div style={{ marginBottom:24, paddingBottom:16, borderBottom:"1px solid #e2e8f0" }}>
@@ -124,6 +121,303 @@ function SharedChatView() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Admin Panel ─────────────────────────────────────────────
+function AdminPanel({ token, onClose }) {
+  const [users, setUsers]               = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [toast, setToast]               = useState("");
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 3000);
+  };
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API}/admin/users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || "Failed to load users"); return; }
+      setUsers(data.users);
+    } catch (err) {
+      setError("Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const toggleBan = async (userId) => {
+    try {
+      const res = await fetch(`${API}/admin/users/${userId}/ban`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(`❌ ${data.message}`); return; }
+      setUsers((prev) =>
+        prev.map((u) => u._id === userId ? { ...u, isBanned: data.isBanned } : u)
+      );
+      showToast(data.isBanned ? "🚫 User banned" : "✅ User unbanned");
+    } catch (err) {
+      showToast("❌ Failed to update user");
+    }
+  };
+
+  const deleteUser = async (userId) => {
+    try {
+      const res = await fetch(`${API}/admin/users/${userId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(`❌ ${data.message}`); return; }
+      setUsers((prev) => prev.filter((u) => u._id !== userId));
+      setDeleteConfirmId(null);
+      showToast("🗑️ User deleted");
+    } catch (err) {
+      showToast("❌ Failed to delete user");
+    }
+  };
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, background:"rgba(0,0,0,0.7)",
+      zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center",
+      padding:"16px", backdropFilter:"blur(6px)",
+    }}>
+      <div style={{
+        background:"var(--bg2)", border:"1px solid var(--border2)",
+        borderRadius:20, width:"100%", maxWidth:860,
+        maxHeight:"90vh", display:"flex", flexDirection:"column",
+        boxShadow:"0 24px 64px rgba(0,0,0,0.4)",
+      }}>
+        {/* Header */}
+        <div style={{
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"20px 24px", borderBottom:"1px solid var(--border)",
+          flexShrink:0,
+        }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{
+              width:36, height:36, borderRadius:10,
+              background:"var(--accent-glow)", border:"1px solid var(--accent)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              color:"var(--accent3)",
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div>
+              <h2 style={{ margin:0, fontSize:"1.1rem", fontWeight:600, color:"var(--text)" }}>
+                Admin Panel
+              </h2>
+              <p style={{ margin:0, fontSize:"0.78rem", color:"var(--text2)" }}>
+                {users.length} user{users.length !== 1 ? "s" : ""} total
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            width:32, height:32, borderRadius:8,
+            border:"1px solid var(--border2)", background:"var(--bg3)",
+            color:"var(--text2)", cursor:"pointer",
+            display:"flex", alignItems:"center", justifyContent:"center",
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex:1, overflowY:"auto", padding:"16px 24px" }}>
+          {loading ? (
+            <div style={{ textAlign:"center", padding:"48px 0", color:"var(--text2)" }}>
+              Loading users...
+            </div>
+          ) : error ? (
+            <div style={{ textAlign:"center", padding:"48px 0", color:"#ef4444" }}>
+              ❌ {error}
+            </div>
+          ) : users.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"48px 0", color:"var(--text2)" }}>
+              No users found
+            </div>
+          ) : (
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr style={{ borderBottom:"1px solid var(--border)" }}>
+                  {["User", "Email", "Chats", "Joined", "Status", "Actions"].map((h) => (
+                    <th key={h} style={{
+                      padding:"10px 12px", textAlign:"left",
+                      fontSize:"0.75rem", color:"var(--text3)",
+                      fontWeight:600, textTransform:"uppercase",
+                      letterSpacing:"0.05em", whiteSpace:"nowrap",
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u._id} style={{
+                    borderBottom:"1px solid var(--border)",
+                    background: u.isBanned ? "rgba(239,68,68,0.04)" : "transparent",
+                    transition:"background 0.15s",
+                  }}>
+                    {/* User */}
+                    <td style={{ padding:"12px", whiteSpace:"nowrap" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+                        <div style={{
+                          width:32, height:32, borderRadius:"50%",
+                          background: u.isAdmin ? "var(--accent)" : "var(--bg4)",
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          fontSize:"0.8rem", fontWeight:600, color:"white", flexShrink:0,
+                        }}>
+                          {u.name?.[0]?.toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontSize:"0.88rem", fontWeight:500, color:"var(--text)" }}>
+                            {u.name}
+                            {u.isAdmin && (
+                              <span style={{
+                                marginLeft:6, fontSize:"0.68rem", padding:"1px 6px",
+                                background:"var(--accent-glow)", color:"var(--accent3)",
+                                borderRadius:4, border:"1px solid var(--accent)",
+                              }}>Admin</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Email */}
+                    <td style={{ padding:"12px", fontSize:"0.85rem", color:"var(--text2)" }}>
+                      {u.email}
+                    </td>
+
+                    {/* Chats */}
+                    <td style={{ padding:"12px", fontSize:"0.85rem", color:"var(--text2)", textAlign:"center" }}>
+                      {u.sessionCount}
+                    </td>
+
+                    {/* Joined */}
+                    <td style={{ padding:"12px", fontSize:"0.83rem", color:"var(--text2)", whiteSpace:"nowrap" }}>
+                      {new Date(u.createdAt).toLocaleDateString([], { month:"short", day:"numeric", year:"numeric" })}
+                    </td>
+
+                    {/* Status */}
+                    <td style={{ padding:"12px" }}>
+                      <span style={{
+                        padding:"3px 10px", borderRadius:20, fontSize:"0.76rem", fontWeight:500,
+                        background: u.isBanned ? "rgba(239,68,68,0.12)" : "rgba(34,197,94,0.1)",
+                        color: u.isBanned ? "#ef4444" : "#22c55e",
+                        border: `1px solid ${u.isBanned ? "rgba(239,68,68,0.25)" : "rgba(34,197,94,0.2)"}`,
+                      }}>
+                        {u.isBanned ? "Banned" : "Active"}
+                      </span>
+                    </td>
+
+                    {/* Actions */}
+                    <td style={{ padding:"12px" }}>
+                      {u.isAdmin ? (
+                        <span style={{ fontSize:"0.78rem", color:"var(--text3)" }}>—</span>
+                      ) : deleteConfirmId === u._id ? (
+                        <div style={{ display:"flex", gap:6 }}>
+                          <button onClick={() => deleteUser(u._id)} style={{
+                            padding:"4px 10px", background:"rgba(239,68,68,0.15)",
+                            border:"1px solid rgba(239,68,68,0.3)", color:"#ef4444",
+                            borderRadius:6, fontSize:"0.78rem", cursor:"pointer", fontFamily:"inherit",
+                          }}>Delete</button>
+                          <button onClick={() => setDeleteConfirmId(null)} style={{
+                            padding:"4px 10px", background:"transparent",
+                            border:"1px solid var(--border2)", color:"var(--text2)",
+                            borderRadius:6, fontSize:"0.78rem", cursor:"pointer", fontFamily:"inherit",
+                          }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", gap:6 }}>
+                          {/* Ban/Unban */}
+                          <button onClick={() => toggleBan(u._id)} title={u.isBanned ? "Unban" : "Ban"} style={{
+                            width:30, height:30, borderRadius:8,
+                            border:"1px solid var(--border2)", background:"var(--bg3)",
+                            color: u.isBanned ? "#22c55e" : "#f59e0b",
+                            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                          }}>
+                            {u.isBanned ? (
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                                <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
+                              </svg>
+                            ) : (
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
+                                <path d="M4.93 4.93l14.14 14.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                              </svg>
+                            )}
+                          </button>
+                          {/* Delete */}
+                          <button onClick={() => setDeleteConfirmId(u._id)} title="Delete user" style={{
+                            width:30, height:30, borderRadius:8,
+                            border:"1px solid var(--border2)", background:"var(--bg3)",
+                            color:"var(--text3)", cursor:"pointer",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                          }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                              <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding:"14px 24px", borderTop:"1px solid var(--border)",
+          flexShrink:0, display:"flex", justifyContent:"space-between", alignItems:"center",
+        }}>
+          <p style={{ margin:0, fontSize:"0.78rem", color:"var(--text3)" }}>
+            Only you can see this panel
+          </p>
+          <button onClick={loadUsers} style={{
+            padding:"7px 16px", background:"var(--bg3)",
+            border:"1px solid var(--border2)", color:"var(--text2)",
+            borderRadius:8, fontSize:"0.84rem", cursor:"pointer", fontFamily:"inherit",
+          }}>
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)",
+          background:"#1e293b", color:"#fff", padding:"10px 20px",
+          borderRadius:8, fontSize:14, zIndex:9999,
+          boxShadow:"0 4px 12px rgba(0,0,0,0.3)", whiteSpace:"nowrap",
+        }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -157,6 +451,7 @@ export default function App() {
   const [editText, setEditText] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [toast, setToast] = useState("");
+  const [showAdmin, setShowAdmin] = useState(false);
 
   const chatEndRef = useRef(null);
   const fullReplyRef = useRef("");
@@ -198,10 +493,7 @@ export default function App() {
   }, [messages]);
 
   useEffect(() => {
-    if (token) {
-      loadSessions();
-      startNewSession();
-    }
+    if (token) { loadSessions(); startNewSession(); }
   }, [token]);
 
   useEffect(() => {
@@ -228,7 +520,6 @@ export default function App() {
     }
   }, [editingId]);
 
-  // ── Show toast helper ───────────────────────────────────
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3000);
@@ -263,11 +554,7 @@ export default function App() {
           },
           body: JSON.stringify({
             title,
-            messages: msgsToSave.map((m) => ({
-              role: m.role,
-              text: m.text,
-              time: m.time,
-            })),
+            messages: msgsToSave.map((m) => ({ role: m.role, text: m.text, time: m.time })),
           }),
         });
       } else {
@@ -279,11 +566,7 @@ export default function App() {
           },
           body: JSON.stringify({
             title,
-            messages: msgsToSave.map((m) => ({
-              role: m.role,
-              text: m.text,
-              time: m.time,
-            })),
+            messages: msgsToSave.map((m) => ({ role: m.role, text: m.text, time: m.time })),
           }),
         });
         const data = await res.json();
@@ -300,9 +583,7 @@ export default function App() {
 
   const startNewSession = async () => {
     setMessages((prev) => {
-      if (prev.length > 0) {
-        saveCurrentSession(prev).then(() => loadSessions());
-      }
+      if (prev.length > 0) saveCurrentSession(prev).then(() => loadSessions());
       return [];
     });
     setCurrentSessionId(null);
@@ -323,10 +604,7 @@ export default function App() {
       const data = await res.json();
       if (data.session) {
         const formatted = data.session.messages.map((m, i) => ({
-          role: m.role,
-          text: m.text,
-          time: new Date(m.time),
-          id: sessionId + i,
+          role: m.role, text: m.text, time: new Date(m.time), id: sessionId + i,
         }));
         setMessages(formatted);
         setCurrentSessionId(sessionId);
@@ -357,7 +635,6 @@ export default function App() {
     }
   };
 
-  // ── Share session ───────────────────────────────────────
   const toggleShare = async (sessionId) => {
     try {
       const res = await fetch(`${API}/sessions/${sessionId}/share`, {
@@ -367,9 +644,7 @@ export default function App() {
       const data = await res.json();
       setSessions((prev) =>
         prev.map((s) =>
-          s._id === sessionId
-            ? { ...s, isShared: data.isShared, shareId: data.shareId }
-            : s
+          s._id === sessionId ? { ...s, isShared: data.isShared, shareId: data.shareId } : s
         )
       );
       if (data.isShared) {
@@ -380,7 +655,6 @@ export default function App() {
         showToast("🔒 Sharing disabled for this chat.");
       }
     } catch (err) {
-      console.error("Share toggle failed", err);
       showToast("❌ Failed to toggle share.");
     }
   };
@@ -469,6 +743,7 @@ export default function App() {
     setAuthMode("login");
     setMenuOpen(false);
     setDrawerOpen(false);
+    setShowAdmin(false);
   };
 
   const switchAuthMode = () => {
@@ -478,20 +753,11 @@ export default function App() {
   };
 
   // ── Edit message ────────────────────────────────────────
-  const startEdit = (msg) => {
-    setEditingId(msg.id);
-    setEditText(msg.text);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditText("");
-  };
-
+  const startEdit = (msg) => { setEditingId(msg.id); setEditText(msg.text); };
+  const cancelEdit = () => { setEditingId(null); setEditText(""); };
   const submitEdit = (msgIndex) => {
     if (!editText.trim()) return;
-    const messagesUpToEdit = messages.slice(0, msgIndex);
-    setMessages(messagesUpToEdit);
+    setMessages(messages.slice(0, msgIndex));
     setEditingId(null);
     setEditText("");
     sendMessage(editText.trim());
@@ -504,17 +770,14 @@ export default function App() {
     const now = new Date();
     const userId = "u" + Date.now();
     const botId  = "b" + Date.now();
-
     const newUserMsg = { role: "user", text: userText, time: now, id: userId };
     const newBotMsg  = { role: "bot", text: "", thinking: true, time: now, id: botId };
-
     setMessages((prev) => [...prev, newUserMsg]);
     setInput("");
     setLoading(true);
     startThinkingAnimation();
     fullReplyRef.current = "";
     setMessages((prev) => [...prev, newBotMsg]);
-
     try {
       const res = await fetch(`${API}/chat`, {
         method: "POST",
@@ -524,11 +787,9 @@ export default function App() {
         },
         body: JSON.stringify({ message: userText }),
       });
-
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let firstChunk = true;
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -543,9 +804,7 @@ export default function App() {
               speak(fullReplyRef.current);
               setMessages((prev) => {
                 const updatedMessages = prev.map((m) =>
-                  m.id === botId
-                    ? { ...m, text: fullReplyRef.current, thinking: false }
-                    : m
+                  m.id === botId ? { ...m, text: fullReplyRef.current, thinking: false } : m
                 );
                 saveCurrentSession(updatedMessages);
                 return updatedMessages;
@@ -556,18 +815,13 @@ export default function App() {
               const parsed = JSON.parse(jsonStr);
               const token_text = parsed.token || "";
               if (token_text) {
-                if (firstChunk) {
-                  firstChunk = false;
-                  stopThinkingAnimation();
-                  setLoading(false);
-                }
+                if (firstChunk) { firstChunk = false; stopThinkingAnimation(); setLoading(false); }
                 fullReplyRef.current += token_text;
                 setMessages((prev) => {
                   const updated = [...prev];
                   updated[updated.length - 1] = {
                     ...updated[updated.length - 1],
-                    text: fullReplyRef.current,
-                    thinking: false,
+                    text: fullReplyRef.current, thinking: false,
                   };
                   return updated;
                 });
@@ -581,9 +835,7 @@ export default function App() {
       setMessages((prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          text: "Error reaching server.",
-          thinking: false,
+          ...updated[updated.length - 1], text: "Error reaching server.", thinking: false,
         };
         return updated;
       });
@@ -606,11 +858,7 @@ export default function App() {
   };
 
   const playMessage = (text, id) => {
-    if (playingId === id) {
-      window.speechSynthesis.cancel();
-      setPlayingId(null);
-      return;
-    }
+    if (playingId === id) { window.speechSynthesis.cancel(); setPlayingId(null); return; }
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = language;
@@ -639,35 +887,19 @@ export default function App() {
       clearSilenceTimer();
       const isFinal = e.results[e.results.length - 1].isFinal;
       const transcript = e.results[e.results.length - 1][0].transcript;
-      if (isFinal) {
-        setListening(false);
-        recognitionRef.current = null;
-        sendMessage(transcript);
-      }
+      if (isFinal) { setListening(false); recognitionRef.current = null; sendMessage(transcript); }
     };
-    recognition.onerror = () => {
-      clearSilenceTimer();
-      setListening(false);
-      recognitionRef.current = null;
-    };
-    recognition.onend = () => {
-      clearSilenceTimer();
-      setListening(false);
-      recognitionRef.current = null;
-    };
+    recognition.onerror = () => { clearSilenceTimer(); setListening(false); recognitionRef.current = null; };
+    recognition.onend = () => { clearSilenceTimer(); setListening(false); recognitionRef.current = null; };
     recognition.start();
   };
 
   const stopListening = () => {
     clearSilenceTimer();
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
+    if (recognitionRef.current) { recognitionRef.current.stop(); recognitionRef.current = null; }
     setListening(false);
   };
 
-  // Group sessions by date
   const groupedSessions = sessions.reduce((groups, session) => {
     const label = formatDate(session.updatedAt);
     if (!groups[label]) groups[label] = [];
@@ -675,7 +907,7 @@ export default function App() {
     return groups;
   }, {});
 
-  // ── Shared page route guard ─────────────────────────────
+  // ── Route guards ────────────────────────────────────────
   if (window.location.pathname.startsWith("/shared/")) {
     return <SharedChatView />;
   }
@@ -738,12 +970,14 @@ export default function App() {
   return (
     <div className="chat-app">
 
-      {/* ── Drawer overlay ── */}
-      {drawerOpen && (
-        <div className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
+      {/* Admin Panel */}
+      {showAdmin && (
+        <AdminPanel token={token} onClose={() => setShowAdmin(false)} />
       )}
 
-      {/* ── Left Drawer ── */}
+      {drawerOpen && <div className="drawer-overlay" onClick={() => setDrawerOpen(false)} />}
+
+      {/* Left Drawer */}
       <aside className={`drawer ${drawerOpen ? "drawer--open" : ""}`}>
         <div className="drawer-header">
           <div className="drawer-logo">
@@ -772,21 +1006,15 @@ export default function App() {
               <div key={label} className="session-group">
                 <p className="session-group-label">{label}</p>
                 {group.map((session) => (
-                  <div
-                    key={session._id}
-                    className={`session-item ${currentSessionId === session._id ? "session-item--active" : ""}`}
-                  >
-                    <button
-                      className="session-title"
-                      onClick={() => loadSession(session._id)}
-                    >
+                  <div key={session._id}
+                    className={`session-item ${currentSessionId === session._id ? "session-item--active" : ""}`}>
+                    <button className="session-title" onClick={() => loadSession(session._id)}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                         <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
                           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                       <span>{session.title}</span>
                     </button>
-
                     {deleteConfirmId === session._id ? (
                       <div className="delete-confirm">
                         <button className="delete-yes" onClick={() => deleteSession(session._id)}>Delete</button>
@@ -794,13 +1022,10 @@ export default function App() {
                       </div>
                     ) : (
                       <div style={{ display:"flex", gap:2 }}>
-                        {/* Share button */}
-                        <button
-                          className="session-delete"
-                          title={session.isShared ? "Disable share link" : "Copy share link"}
+                        <button className="session-delete"
+                          title={session.isShared ? "Disable share" : "Copy share link"}
                           onClick={(e) => { e.stopPropagation(); toggleShare(session._id); }}
-                          style={{ color: session.isShared ? "#3b82f6" : "inherit" }}
-                        >
+                          style={{ color: session.isShared ? "#3b82f6" : "inherit" }}>
                           {session.isShared ? (
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                               <path d="M13.5 10.5L21 3M3 21l7.5-7.5M9 15l-1.5 1.5a4.243 4.243 0 006 6L15 21a4.243 4.243 0 000-6M15 9l1.5-1.5a4.243 4.243 0 00-6-6L9 3a4.243 4.243 0 000 6"
@@ -815,13 +1040,9 @@ export default function App() {
                             </svg>
                           )}
                         </button>
-
-                        {/* Delete button */}
-                        <button
-                          className="session-delete"
+                        <button className="session-delete"
                           onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(session._id); }}
-                          title="Delete"
-                        >
+                          title="Delete">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                             <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                             <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -845,7 +1066,7 @@ export default function App() {
         </div>
       </aside>
 
-      {/* ── Topbar ── */}
+      {/* Topbar */}
       <header className="topbar">
         <div className="topbar-left">
           <button className="drawer-toggle" onClick={() => setDrawerOpen((o) => !o)} title="Chats">
@@ -892,6 +1113,18 @@ export default function App() {
             )}
           </div>
 
+          {/* Admin button — only for admins */}
+          {user?.isAdmin && (
+            <button className="icon-btn" onClick={() => setShowAdmin(true)} title="Admin Panel"
+              style={{ color: "var(--accent3)", borderColor: "var(--accent)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </button>
+          )}
+
           <button className="icon-btn" onClick={startNewSession} title="New chat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -927,7 +1160,6 @@ export default function App() {
               </svg>
             )}
           </button>
-
           {menuOpen && (
             <div className="mobile-menu">
               <div className="mobile-menu-user">
@@ -952,6 +1184,16 @@ export default function App() {
                   ))}
                 </select>
               </div>
+              {user?.isAdmin && (
+                <button className="mobile-menu-item" onClick={() => { setShowAdmin(true); setMenuOpen(false); }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
+                    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  <span>Admin Panel</span>
+                </button>
+              )}
               <button className="mobile-menu-item" onClick={startNewSession}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -977,7 +1219,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── Chat area ── */}
+      {/* Chat area */}
       <main className="chat-main">
         <div className="chat-scroll" ref={chatScrollRef}>
           {messages.length === 0 && (
@@ -992,7 +1234,6 @@ export default function App() {
               </div>
             </div>
           )}
-
           {messages.map((msg, i) => (
             <div key={msg.id || i} className={`msg-row ${msg.role}`}>
               {msg.role === "bot" && (
@@ -1003,17 +1244,12 @@ export default function App() {
               <div className="msg-col">
                 {msg.role === "user" && editingId === msg.id ? (
                   <div className="edit-wrap">
-                    <textarea
-                      ref={editInputRef}
-                      className="edit-input"
-                      value={editText}
+                    <textarea ref={editInputRef} className="edit-input" value={editText}
                       onChange={(e) => setEditText(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitEdit(i); }
                         if (e.key === "Escape") cancelEdit();
-                      }}
-                      rows={3}
-                    />
+                      }} rows={3} />
                     <div className="edit-actions">
                       <button className="edit-cancel-btn" onClick={cancelEdit}>Cancel</button>
                       <button className="edit-submit-btn" onClick={() => submitEdit(i)}>Send</button>
@@ -1029,7 +1265,6 @@ export default function App() {
                     ) : (msg.text || "")}
                   </div>
                 )}
-
                 {!msg.thinking && msg.text && editingId !== msg.id && (
                   <div className={`msg-meta ${msg.role}`}>
                     <span className="msg-time">{msg.time ? formatTime(msg.time) : ""}</span>
@@ -1100,20 +1335,15 @@ export default function App() {
 
       <div className="input-dock">
         <div className="input-wrap">
-          <input
-            type="text"
-            className="chat-input"
+          <input type="text" className="chat-input"
             placeholder={listening ? "Listening…" : "Message AI Voice Bot..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !loading && sendMessage()}
-            disabled={listening}
-          />
+            disabled={listening} />
           <div className="input-actions">
-            <button
-              className={`mic-btn ${listening ? "mic-on" : ""}`}
-              onClick={listening ? stopListening : startListening}
-              disabled={loading}>
+            <button className={`mic-btn ${listening ? "mic-on" : ""}`}
+              onClick={listening ? stopListening : startListening} disabled={loading}>
               {listening ? (
                 <div className="mic-waveform"><span /><span /><span /></div>
               ) : (
@@ -1125,9 +1355,7 @@ export default function App() {
                 </svg>
               )}
             </button>
-            <button
-              className="send-btn"
-              onClick={() => sendMessage()}
+            <button className="send-btn" onClick={() => sendMessage()}
               disabled={loading || !input.trim() || listening}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
                 <path d="M12 19V5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
@@ -1141,18 +1369,17 @@ export default function App() {
         </p>
       </div>
 
-      {/* ── Toast notification ── */}
+      {/* Toast */}
       {toast && (
         <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#1e293b", color: "#fff", padding: "10px 20px",
-          borderRadius: 8, fontSize: 14, zIndex: 9999,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.3)", whiteSpace: "nowrap",
+          position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)",
+          background:"#1e293b", color:"#fff", padding:"10px 20px",
+          borderRadius:8, fontSize:14, zIndex:9999,
+          boxShadow:"0 4px 12px rgba(0,0,0,0.3)", whiteSpace:"nowrap",
         }}>
           {toast}
         </div>
       )}
-
     </div>
   );
 }

@@ -9,6 +9,7 @@ const connectDB = require("./config/db");
 const chatRoutes = require("./routes/chatRoutes");
 const authRoutes = require("./routes/authRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 connectDB();
 
@@ -24,7 +25,8 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
-app.use("/api/sessions", sessionRoutes); // ← moved here, after app exists
+app.use("/api/sessions", sessionRoutes);
+app.use("/api/admin", adminRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

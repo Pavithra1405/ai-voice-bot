@@ -1,5 +1,4 @@
 // backend/models/User.js
-
 const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
@@ -16,6 +15,14 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
+    },
+    isAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    isBanned: {
+      type: Boolean,
+      default: false,
     },
   },
   {
