@@ -6,13 +6,51 @@ const axios = require("axios");
 const auth = require("../middleware/authMiddleware");
 const FormData = require("form-data");
 
-// Store audio in memory (no disk)
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Only filter obvious noise/garbage — NOT real words
+const GARBAGE_ONLY = new Set([
+  ".", "..", "...", "um", "uh", "hmm", "hm", "mhm",
+  "um.", "uh.", "hmm.", "hm."
+]);
+
+function isValidTranscript(text) {
+  if (!text || typeof text !== "string") return false;
+
+  const cleaned = text.trim();
+
+  // Empty
+  if (!cleaned) {
+    console.log("❌ No speech detected — empty transcript");
+    return false;
+  }
+
+  // Only punctuation or whitespace
+  if (/^[\s.,!?]+$/.test(cleaned)) {
+    console.log("❌ No speech detected — only punctuation");
+    return false;
+  }
+
+  // Obvious garbage sounds only
+  if (GARBAGE_ONLY.has(cleaned.toLowerCase())) {
+    console.log("❌ Ignored noise transcript:", JSON.stringify(cleaned));
+    return false;
+  }
+
+  console.log("✅ Valid transcript received:", JSON.stringify(cleaned));
+  return true;
+}
 
 // POST /api/call/transcribe
 router.post("/transcribe", auth, upload.single("audio"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No audio file" });
+
+    // Silence check — silent audio is always very small
+    if (req.file.size < 1500) {
+      console.log("❌ No speech detected — audio too small:", req.file.size, "bytes");
+      return res.json({ transcript: "", valid: false, reason: "too_small" });
+    }
 
     const formData = new FormData();
     formData.append("file", req.file.buffer, {
@@ -34,7 +72,13 @@ router.post("/transcribe", auth, upload.single("audio"), async (req, res) => {
       }
     );
 
-    res.json({ transcript: response.data.text });
+    const transcript = response.data.text?.trim() || "";
+
+    if (!isValidTranscript(transcript)) {
+      return res.json({ transcript: "", valid: false, reason: "garbage" });
+    }
+
+    res.json({ transcript, valid: true });
   } catch (err) {
     console.error("Transcription error:", err.response?.data || err.message);
     res.status(500).json({ error: "Transcription failed" });
