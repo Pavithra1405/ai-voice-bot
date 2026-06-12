@@ -72,9 +72,9 @@ function MoonIcon() {
 // ── Shared Chat View ────────────────────────────────────────
 function SharedChatView() {
   const [messages, setMessages] = useState([]);
-  const [title, setTitle]       = useState("");
-  const [error, setError]       = useState("");
-  const [loading, setLoading]   = useState(true);
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const shareId = window.location.pathname.split("/shared/")[1];
@@ -91,30 +91,30 @@ function SharedChatView() {
   }, []);
 
   if (loading) return (
-    <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", fontSize:16 }}>
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontSize: 16 }}>
       <NeuralIcon size={28} />&nbsp;Loading shared chat...
     </div>
   );
   if (error) return (
-    <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", fontSize:16, color:"#ef4444" }}>
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", fontSize: 16, color: "#ef4444" }}>
       ❌ {error}
     </div>
   );
   return (
-    <div style={{ maxWidth:720, margin:"0 auto", padding:"32px 16px", fontFamily:"sans-serif" }}>
-      <div style={{ marginBottom:24, paddingBottom:16, borderBottom:"1px solid #e2e8f0" }}>
-        <h2 style={{ margin:0 }}>💬 {title}</h2>
-        <p style={{ margin:"4px 0 0", color:"#94a3b8", fontSize:13 }}>Read-only shared conversation</p>
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 16px", fontFamily: "sans-serif" }}>
+      <div style={{ marginBottom: 24, paddingBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
+        <h2 style={{ margin: 0 }}>💬 {title}</h2>
+        <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: 13 }}>Read-only shared conversation</p>
       </div>
       {messages.map((msg, i) => (
-        <div key={i} style={{ display:"flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", marginBottom:12 }}>
+        <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", marginBottom: 12 }}>
           <div style={{
-            maxWidth:"75%", padding:"10px 14px", borderRadius:12,
+            maxWidth: "75%", padding: "10px 14px", borderRadius: 12,
             background: msg.role === "user" ? "#3b82f6" : "#f1f5f9",
             color: msg.role === "user" ? "#fff" : "#1e293b",
-            fontSize:14, lineHeight:1.5,
+            fontSize: 14, lineHeight: 1.5,
           }}>
-            <div style={{ fontSize:11, opacity:0.6, marginBottom:4 }}>
+            <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>
               {msg.role === "user" ? "You" : "AI Bot"}
             </div>
             {msg.text}
@@ -129,17 +129,17 @@ function SharedChatView() {
 
 // ── Admin Panel — Full-screen split layout ───────────────────
 function AdminPanel({ token, onClose }) {
-  const [users, setUsers]               = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState("");
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [userSessions, setUserSessions] = useState({});
   const [sessionsLoading, setSessionsLoading] = useState({});
   const [expandedSessionId, setExpandedSessionId] = useState(null);
-  const [deleteConfirmId, setDeleteConfirmId]     = useState(null);
-  const [toast, setToast]               = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [toast, setToast] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
-  const [showDetail, setShowDetail]     = useState(false); // mobile: show right panel
+  const [showDetail, setShowDetail] = useState(false); // mobile: show right panel
   const toastTimer = useRef(null);
 
   const showToast = (msg) => {
@@ -154,7 +154,7 @@ function AdminPanel({ token, onClose }) {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const res  = await fetch(`${API}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to load users"); return; }
       setUsers(data.users);
@@ -171,7 +171,7 @@ function AdminPanel({ token, onClose }) {
     if (userSessions[u._id]) return;
     setSessionsLoading((p) => ({ ...p, [u._id]: true }));
     try {
-      const res  = await fetch(`${API}/admin/users/${u._id}/sessions`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API}/admin/users/${u._id}/sessions`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${data.message || "Failed to load sessions"}`); return; }
       setUserSessions((p) => ({ ...p, [u._id]: data.sessions || [] }));
@@ -181,7 +181,7 @@ function AdminPanel({ token, onClose }) {
 
   const toggleBan = async (userId) => {
     try {
-      const res  = await fetch(`${API}/admin/users/${userId}/ban`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API}/admin/users/${userId}/ban`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${data.message}`); return; }
       setUsers((prev) => prev.map((u) => u._id === userId ? { ...u, isBanned: data.isBanned } : u));
@@ -192,7 +192,7 @@ function AdminPanel({ token, onClose }) {
 
   const deleteUser = async (userId) => {
     try {
-      const res  = await fetch(`${API}/admin/users/${userId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API}/admin/users/${userId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${data.message}`); return; }
       setUsers((prev) => prev.filter((u) => u._id !== userId));
@@ -282,9 +282,9 @@ function AdminPanel({ token, onClose }) {
               display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent3)",
             }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
-                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </div>
             <div>
@@ -301,14 +301,14 @@ function AdminPanel({ token, onClose }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button className="ap-icon-btn" onClick={loadUsers} title="Refresh" style={{ width: "auto", padding: "0 12px", gap: 6, color: "var(--text2)", fontSize: "0.82rem" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span style={{ display: "inline" }}>Refresh</span>
             </button>
             <button className="ap-icon-btn" onClick={onClose} title="Close" style={{ color: "var(--text2)" }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
           </div>
@@ -339,7 +339,8 @@ function AdminPanel({ token, onClose }) {
                 // Skeleton list
                 [1, 0.85, 0.7, 0.55, 0.4].map((op, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", opacity: op }}>
-                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--bg4)", flexShrink: 0,
+                    <div style={{
+                      width: 36, height: 36, borderRadius: "50%", background: "var(--bg4)", flexShrink: 0,
                       animation: "ap-skeleton-shimmer 1.4s infinite linear",
                       backgroundSize: "800px 100%",
                       backgroundImage: "linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%)",
@@ -418,9 +419,9 @@ function AdminPanel({ token, onClose }) {
               // Empty state
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "var(--text3)" }}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" opacity={0.3}>
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                  <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
                 <p style={{ margin: 0, fontSize: "0.9rem" }}>Select a user to view details</p>
               </div>
@@ -439,7 +440,7 @@ function AdminPanel({ token, onClose }) {
                     style={{ color: "var(--text2)" }}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                      <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
 
@@ -489,13 +490,13 @@ function AdminPanel({ token, onClose }) {
                       >
                         {selectedUser.isBanned ? (
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                            <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
+                            <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
                           </svg>
                         ) : (
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
-                            <path d="M4.93 4.93l14.14 14.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+                            <path d="M4.93 4.93l14.14 14.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                           </svg>
                         )}
                         {selectedUser.isBanned ? "Unban" : "Ban"}
@@ -516,8 +517,8 @@ function AdminPanel({ token, onClose }) {
                         <button className="ap-icon-btn" onClick={() => setDeleteConfirmId(selectedUser._id)}
                           title="Delete user" style={{ color: "#ef4444" }}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                            <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                           </svg>
                         </button>
                       )}
@@ -534,7 +535,8 @@ function AdminPanel({ token, onClose }) {
                   {sessionsLoading[selectedUser._id] ? (
                     [1, 0.8, 0.6].map((op, i) => (
                       <div key={i} style={{ borderRadius: 12, overflow: "hidden", opacity: op }}>
-                        <div style={{ height: 52, borderRadius: 12,
+                        <div style={{
+                          height: 52, borderRadius: 12,
                           backgroundImage: "linear-gradient(90deg, var(--bg2) 25%, var(--bg3) 50%, var(--bg2) 75%)",
                           backgroundSize: "800px 100%", animation: "ap-skeleton-shimmer 1.4s infinite linear",
                         }} />
@@ -573,7 +575,7 @@ function AdminPanel({ token, onClose }) {
                             }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                                 <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
-                                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
                             </div>
                             <div style={{ minWidth: 0 }}>
@@ -590,7 +592,7 @@ function AdminPanel({ token, onClose }) {
                             transform: expandedSessionId === session._id ? "rotate(90deg)" : "rotate(0deg)",
                             transition: "transform 0.22s cubic-bezier(0.4,0,0.2,1)",
                           }}>
-                            <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         </button>
 
@@ -680,12 +682,12 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
-const [toast, setToast] = useState("");
-const [showAdmin, setShowAdmin] = useState(false);
+  const [toast, setToast] = useState("");
+  const [showAdmin, setShowAdmin] = useState(false);
 
-// ── Call Agent state ────────────────────────────────────
-const [callMode, setCallMode] = useState(false);
-const [callStatus, setCallStatus] = useState("idle"); // idle | listening | thinking | speaking
+  // ── Call Agent state ────────────────────────────────────
+  const [callMode, setCallMode] = useState(false);
+  const [callStatus, setCallStatus] = useState("idle"); // idle | listening | thinking | speaking
 
   const chatEndRef = useRef(null);
   const fullReplyRef = useRef("");
@@ -696,26 +698,26 @@ const [callStatus, setCallStatus] = useState("idle"); // idle | listening | thin
   const silenceTimerRef = useRef(null);
   const editInputRef = useRef(null);
   const chatScrollRef = useRef(null);
-const tokenRef = useRef(token);
-const currentSessionIdRef = useRef(currentSessionId);
+  const tokenRef = useRef(token);
+  const currentSessionIdRef = useRef(currentSessionId);
 
-// ── Call Agent refs ─────────────────────────────────────
-const callModeRef = useRef(false);
-const speakingRef = useRef(false);
-const callRecognitionRef = useRef(null);
+  // ── Call Agent refs ─────────────────────────────────────
+  const callModeRef = useRef(false);
+  const speakingRef = useRef(false);
+  const callRecognitionRef = useRef(null);
 
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => { currentSessionIdRef.current = currentSessionId; }, [currentSessionId]);
 
   const LANGUAGES = [
     { code: "en-US", label: "English", flag: "🇺🇸" },
-    { code: "hi-IN", label: "Hindi",   flag: "🇮🇳" },
-    { code: "ta-IN", label: "Tamil",   flag: "🇮🇳" },
-    { code: "te-IN", label: "Telugu",  flag: "🇮🇳" },
-    { code: "fr-FR", label: "French",  flag: "🇫🇷" },
+    { code: "hi-IN", label: "Hindi", flag: "🇮🇳" },
+    { code: "ta-IN", label: "Tamil", flag: "🇮🇳" },
+    { code: "te-IN", label: "Telugu", flag: "🇮🇳" },
+    { code: "fr-FR", label: "French", flag: "🇫🇷" },
     { code: "es-ES", label: "Spanish", flag: "🇪🇸" },
-    { code: "de-DE", label: "German",  flag: "🇩🇪" },
-    { code: "ja-JP", label: "Japanese",flag: "🇯🇵" },
+    { code: "de-DE", label: "German", flag: "🇩🇪" },
+    { code: "ja-JP", label: "Japanese", flag: "🇯🇵" },
   ];
 
   const currentLang = LANGUAGES.find((l) => l.code === language);
@@ -1008,9 +1010,9 @@ const callRecognitionRef = useRef(null);
     if (!userText) return;
     const now = new Date();
     const userId = "u" + Date.now();
-    const botId  = "b" + Date.now();
+    const botId = "b" + Date.now();
     const newUserMsg = { role: "user", text: userText, time: now, id: userId };
-    const newBotMsg  = { role: "bot", text: "", thinking: true, time: now, id: botId };
+    const newBotMsg = { role: "bot", text: "", thinking: true, time: now, id: botId };
     setMessages((prev) => [...prev, newUserMsg]);
     setInput("");
     setLoading(true);
@@ -1065,7 +1067,7 @@ const callRecognitionRef = useRef(null);
                   return updated;
                 });
               }
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -1106,228 +1108,251 @@ const callRecognitionRef = useRef(null);
     setPlayingId(id);
     window.speechSynthesis.speak(utter);
   };
-// ── Call Agent ──────────────────────────────────────────
-const startCallListening = () => {
-  if (!callModeRef.current) return;
-  setCallStatus("listening");
+  // ── Call Agent ──────────────────────────────────────────
+  const startCallListening = () => {
+    if (!callModeRef.current) return;
+    setCallStatus("listening");
 
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then((stream) => {
-      if (!callModeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        if (!callModeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      callRecognitionRef.current = mediaRecorder;
-      const chunks = [];
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        callRecognitionRef.current = mediaRecorder;
+        const chunks = [];
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
 
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        callRecognitionRef.current = null;
-        if (!callModeRef.current) return;
+        mediaRecorder.onstop = async () => {
+          stream.getTracks().forEach(t => t.stop());
+          callRecognitionRef.current = null;
+          if (!callModeRef.current) return;
 
-        const blob = new Blob(chunks, { type: "audio/webm" });
+          const blob = new Blob(chunks, { type: "audio/webm" });
 
-        // Frontend size check
-        if (blob.size < 4000) {
-          if (callModeRef.current && !speakingRef.current) {
-            setTimeout(() => startCallListening(), 300);
+          // Frontend size check
+          if (blob.size < 4000) {
+            if (callModeRef.current && !speakingRef.current) {
+              setTimeout(() => startCallListening(), 300);
+            }
+            return;
           }
-          return;
-        }
 
-        try {
-          setCallStatus("thinking");
-          const formData = new FormData();
-          formData.append("audio", blob, "audio.webm");
-          formData.append("language", language.split("-")[0]);
+          // ── Voice Activity Detection (RMS energy check) ──
+          try {
+            const arrayBuffer = await blob.arrayBuffer();
+            const audioContext = new AudioContext();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const channelData = audioBuffer.getChannelData(0);
 
-          const res = await fetch(`${API}/call/transcribe`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${tokenRef.current}` },
-            body: formData,
-          });
+            let sum = 0;
+            for (let i = 0; i < channelData.length; i++) {
+              sum += channelData[i] * channelData[i];
+            }
+            const rms = Math.sqrt(sum / channelData.length);
+            console.log("🎙️ Audio RMS energy:", rms);
 
-          const data = await res.json();
-          const transcript = data.transcript?.trim();
+            if (rms < 0.01) {
+              console.log("❌ No real speech — low energy:", rms);
+              if (callModeRef.current && !speakingRef.current) {
+                setTimeout(() => startCallListening(), 300);
+              }
+              return;
+            }
+            console.log("✅ Real speech detected — energy:", rms);
+          } catch (e) {
+            console.log("⚠️ Energy check failed, continuing:", e.message);
+          }
 
-          // ── Repeat detection ──────────────────────────
-          if (data.valid && transcript && callModeRef.current) {
-            const isShortPhrase = transcript.split(" ").length <= 3;
-            const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
+          try {
+            setCallStatus("thinking");
+            const formData = new FormData();
+            formData.append("audio", blob, "audio.webm");
+            formData.append("language", language.split("-")[0]);
 
-            if (isShortPhrase && isSameAsLast) {
-              // Same short phrase repeated = background noise
-              console.log("❌ Repeated noise ignored:", transcript);
+            const res = await fetch(`${API}/call/transcribe`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${tokenRef.current}` },
+              body: formData,
+            });
+
+            const data = await res.json();
+            const transcript = data.transcript?.trim();
+
+            // ── Repeat detection ──────────────────────────
+            if (data.valid && transcript && callModeRef.current) {
+              const isShortPhrase = transcript.split(" ").length <= 3;
+              const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
+
+              if (isShortPhrase && isSameAsLast) {
+                console.log("❌ Repeated noise ignored:", transcript);
+                window._lastCallTranscript = "";
+                if (callModeRef.current && !speakingRef.current) {
+                  setTimeout(() => startCallListening(), 300);
+                }
+              } else {
+                window._lastCallTranscript = transcript.toLowerCase();
+                sendCallMessage(transcript);
+              }
+            } else {
               window._lastCallTranscript = "";
               if (callModeRef.current && !speakingRef.current) {
                 setTimeout(() => startCallListening(), 300);
               }
-            } else {
-              // Valid — send to AI
-              window._lastCallTranscript = transcript.toLowerCase();
-              sendCallMessage(transcript);
             }
-          } else {
-            // Not valid — keep listening
-            window._lastCallTranscript = "";
-            if (callModeRef.current && !speakingRef.current) {
-              setTimeout(() => startCallListening(), 300);
-            }
+          } catch (err) {
+            console.error("Transcription error:", err);
+            if (callModeRef.current) setTimeout(() => startCallListening(), 300);
           }
-        } catch (err) {
-          console.error("Transcription error:", err);
-          if (callModeRef.current) setTimeout(() => startCallListening(), 300);
-        }
-      };
+        };
 
-      // Record for 5 seconds then transcribe
-      mediaRecorder.start();
-      setTimeout(() => {
-        if (mediaRecorder.state === "recording") mediaRecorder.stop();
-      }, 5000);
-    })
-    .catch((err) => {
-      console.error("Mic error:", err);
-      if (callModeRef.current) setTimeout(() => startCallListening(), 1000);
-    });
-};
+        // Record for 5 seconds then transcribe
+        mediaRecorder.start();
+        setTimeout(() => {
+          if (mediaRecorder.state === "recording") mediaRecorder.stop();
+        }, 5000);
+      })
+      .catch((err) => {
+        console.error("Mic error:", err);
+        if (callModeRef.current) setTimeout(() => startCallListening(), 1000);
+      });
+  };
 
-const sendCallMessage = async (text) => {
-  if (!callModeRef.current) return;
-  setCallStatus("thinking");
+  const sendCallMessage = async (text) => {
+    if (!callModeRef.current) return;
+    setCallStatus("thinking");
 
-  const now = new Date();
-  const userId = "u" + Date.now();
-  const botId  = "b" + Date.now();
-  setMessages((prev) => [...prev, { role: "user", text, time: now, id: userId }]);
+    const now = new Date();
+    const userId = "u" + Date.now();
+    const botId = "b" + Date.now();
+    setMessages((prev) => [...prev, { role: "user", text, time: now, id: userId }]);
 
-  const newBotMsg = { role: "bot", text: "", thinking: true, time: now, id: botId };
-  setMessages((prev) => [...prev, newBotMsg]);
+    const newBotMsg = { role: "bot", text: "", thinking: true, time: now, id: botId };
+    setMessages((prev) => [...prev, newBotMsg]);
 
-  fullReplyRef.current = "";
+    fullReplyRef.current = "";
 
-  try {
-    const res = await fetch(`${API}/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${tokenRef.current}`,
-      },
-      body: JSON.stringify({ message: text }),
-    });
+    try {
+      const res = await fetch(`${API}/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tokenRef.current}`,
+        },
+        body: JSON.stringify({ message: text }),
+      });
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value);
-      const lines = chunk.split("\n").filter((l) => l.trim());
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const jsonStr = line.replace("data: ", "").trim();
-          if (jsonStr === "[DONE]") {
-            // Update message in UI
-            setMessages((prev) => {
-              const updated = prev.map((m) =>
-                m.id === botId ? { ...m, text: fullReplyRef.current, thinking: false } : m
-              );
-              saveCurrentSession(updated);
-              return updated;
-            });
-            // Speak the reply
-            if (callModeRef.current) speakCallReply(fullReplyRef.current, botId);
-            break;
-          }
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const token_text = parsed.token || "";
-            if (token_text) {
-              fullReplyRef.current += token_text;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter((l) => l.trim());
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const jsonStr = line.replace("data: ", "").trim();
+            if (jsonStr === "[DONE]") {
+              // Update message in UI
               setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  text: fullReplyRef.current, thinking: false,
-                };
+                const updated = prev.map((m) =>
+                  m.id === botId ? { ...m, text: fullReplyRef.current, thinking: false } : m
+                );
+                saveCurrentSession(updated);
                 return updated;
               });
+              // Speak the reply
+              if (callModeRef.current) speakCallReply(fullReplyRef.current, botId);
+              break;
             }
-          } catch (e) {}
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const token_text = parsed.token || "";
+              if (token_text) {
+                fullReplyRef.current += token_text;
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    text: fullReplyRef.current, thinking: false,
+                  };
+                  return updated;
+                });
+              }
+            } catch (e) { }
+          }
         }
       }
-    }
-  } catch (err) {
-    setMessages((prev) => {
-      const updated = [...prev];
-      updated[updated.length - 1] = {
-        ...updated[updated.length - 1],
-        text: "Error reaching server.", thinking: false,
-      };
-      return updated;
-    });
-    if (callModeRef.current) setTimeout(() => startCallListening(), 500);
-  }
-};
-
-const speakCallReply = (text) => {
-  if (!callModeRef.current) return;
-  window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = language;
-  utter.rate = 1;
-  speakingRef.current = true;
-  setCallStatus("speaking");
-
-  utter.onend = () => {
-    speakingRef.current = false;
-    if (callModeRef.current) {
-      setCallStatus("listening");
-      setTimeout(() => startCallListening(), 500);
+    } catch (err) {
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          text: "Error reaching server.", thinking: false,
+        };
+        return updated;
+      });
+      if (callModeRef.current) setTimeout(() => startCallListening(), 500);
     }
   };
 
-  utter.onerror = () => {
-    speakingRef.current = false;
-    if (callModeRef.current) {
-      setCallStatus("listening");
-      setTimeout(() => startCallListening(), 500);
-    }
-  };
+  const speakCallReply = (text) => {
+    if (!callModeRef.current) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = language;
+    utter.rate = 1;
+    speakingRef.current = true;
+    setCallStatus("speaking");
 
-  window.speechSynthesis.speak(utter);
-};
-
-const startCall = () => {
-  callModeRef.current = true;
-  setCallMode(true);
-  setCallStatus("listening");
-  // Stop any existing regular listening
-  stopListening();
-  window.speechSynthesis.cancel();
-  setTimeout(() => startCallListening(), 400);
-};
-
-const endCall = () => {
-  callModeRef.current = false;
-  speakingRef.current = false;
-  setCallMode(false);
-  setCallStatus("idle");
-  window._lastCallTranscript = ""; // ← ADD THIS
-  if (callRecognitionRef.current) {
-    try {
-      if (callRecognitionRef.current.state === "recording") {
-        callRecognitionRef.current.stop();
+    utter.onend = () => {
+      speakingRef.current = false;
+      if (callModeRef.current) {
+        setCallStatus("listening");
+        setTimeout(() => startCallListening(), 500);
       }
-    } catch (e) {}
-    callRecognitionRef.current = null;
-  }
-  window.speechSynthesis.cancel();
-};
+    };
+
+    utter.onerror = () => {
+      speakingRef.current = false;
+      if (callModeRef.current) {
+        setCallStatus("listening");
+        setTimeout(() => startCallListening(), 500);
+      }
+    };
+
+    window.speechSynthesis.speak(utter);
+  };
+
+  const startCall = () => {
+    callModeRef.current = true;
+    setCallMode(true);
+    setCallStatus("listening");
+    // Stop any existing regular listening
+    stopListening();
+    window.speechSynthesis.cancel();
+    setTimeout(() => startCallListening(), 400);
+  };
+
+  const endCall = () => {
+    callModeRef.current = false;
+    speakingRef.current = false;
+    setCallMode(false);
+    setCallStatus("idle");
+    window._lastCallTranscript = ""; // ← ADD THIS
+    if (callRecognitionRef.current) {
+      try {
+        if (callRecognitionRef.current.state === "recording") {
+          callRecognitionRef.current.stop();
+        }
+      } catch (e) { }
+      callRecognitionRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+  };
   // ── Voice ───────────────────────────────────────────────
   const startListening = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1481,7 +1506,7 @@ const endCall = () => {
                         <button className="delete-no" onClick={() => setDeleteConfirmId(null)}>Cancel</button>
                       </div>
                     ) : (
-                      <div style={{ display:"flex", gap:2 }}>
+                      <div style={{ display: "flex", gap: 2 }}>
                         <button className="session-delete"
                           title={session.isShared ? "Disable share" : "Copy share link"}
                           onClick={(e) => { e.stopPropagation(); toggleShare(session._id); }}
@@ -1489,14 +1514,14 @@ const endCall = () => {
                           {session.isShared ? (
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                               <path d="M13.5 10.5L21 3M3 21l7.5-7.5M9 15l-1.5 1.5a4.243 4.243 0 006 6L15 21a4.243 4.243 0 000-6M15 9l1.5-1.5a4.243 4.243 0 00-6-6L9 3a4.243 4.243 0 000 6"
-                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                             </svg>
                           ) : (
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                               <path d="M13.5 10.5a4.5 4.5 0 010 6.364l-3 3a4.5 4.5 0 01-6.364-6.364l1.5-1.5"
-                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                               <path d="M10.5 13.5a4.5 4.5 0 010-6.364l3-3a4.5 4.5 0 016.364 6.364l-1.5 1.5"
-                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                             </svg>
                           )}
                         </button>
@@ -1504,8 +1529,8 @@ const endCall = () => {
                           onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(session._id); }}
                           title="Delete">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                            <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                           </svg>
                         </button>
                       </div>
@@ -1531,9 +1556,9 @@ const endCall = () => {
         <div className="topbar-left">
           <button className="drawer-toggle" onClick={() => setDrawerOpen((o) => !o)} title="Chats">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M9 3v18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <path d="M13 8h4M13 12h4M13 16h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M9 3v18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M13 8h4M13 12h4M13 16h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
           <div className="topbar-logo"><NeuralIcon size={20} /></div>
@@ -1572,22 +1597,22 @@ const endCall = () => {
               </div>
             )}
           </div>
-        {/* Call Agent button */}
-<button className="icon-btn" onClick={startCall} title="Start Voice Call"
-  style={{ color:"#22c55e", borderColor:"rgba(34,197,94,0.4)" }}>
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-</button>
+          {/* Call Agent button */}
+          <button className="icon-btn" onClick={startCall} title="Start Voice Call"
+            style={{ color: "#22c55e", borderColor: "rgba(34,197,94,0.4)" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
           {/* Admin button — only for admins */}
           {user?.isAdmin && (
             <button className="icon-btn" onClick={() => setShowAdmin(true)} title="Admin Panel"
               style={{ color: "var(--accent3)", borderColor: "var(--accent)" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
-                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
           )}
@@ -1600,10 +1625,10 @@ const endCall = () => {
 
           <button className="icon-btn" onClick={handleClearChat} title="Clear chat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
 
@@ -1640,8 +1665,8 @@ const endCall = () => {
               </button>
               <div className="mobile-menu-item mobile-lang-row">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                  <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" stroke="currentColor" strokeWidth="2"/>
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" stroke="currentColor" strokeWidth="2" />
                 </svg>
                 <span>Language</span>
                 <select className="mobile-lang-select" value={language}
@@ -1652,19 +1677,19 @@ const endCall = () => {
                 </select>
               </div>
               <button className="mobile-menu-item" onClick={() => { startCall(); setMenuOpen(false); }}
-  style={{ color:"#22c55e" }}>
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-  <span>Start Voice Call</span>
-</button>
+                style={{ color: "#22c55e" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>Start Voice Call</span>
+              </button>
               {user?.isAdmin && (
                 <button className="mobile-menu-item" onClick={() => { setShowAdmin(true); setMenuOpen(false); }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
-                    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+                    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                   <span>Admin Panel</span>
                 </button>
@@ -1677,15 +1702,15 @@ const endCall = () => {
               </button>
               <button className="mobile-menu-item" onClick={handleClearChat}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 <span>Clear chat</span>
               </button>
               <div className="mobile-menu-divider" />
               <button className="mobile-menu-item mobile-menu-logout" onClick={handleLogout}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 <span>Sign out</span>
               </button>
@@ -1747,7 +1772,7 @@ const endCall = () => {
                       <button className="msg-action-btn" onClick={() => startEdit(msg)} title="Edit">
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                           <path d="M11.5 2.5a1.414 1.414 0 012 2L5 13H3v-2L11.5 2.5z"
-                            stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                            stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </button>
                     )}
@@ -1790,121 +1815,118 @@ const endCall = () => {
           <div ref={chatEndRef} />
         </div>
       </main>
-    {/* Call Agent Overlay */}
-{callMode && (
-  <div style={{
-    position:"fixed", inset:0, zIndex:500,
-    background:"rgba(0,0,0,0.85)", backdropFilter:"blur(12px)",
-    display:"flex", flexDirection:"column",
-    alignItems:"center", justifyContent:"center", gap:24,
-  }}>
-    {/* Animated ring */}
-    <div style={{ position:"relative", width:120, height:120 }}>
-      {/* Outer pulse rings */}
-      <div style={{
-        position:"absolute", inset:-20, borderRadius:"50%",
-        border: `2px solid ${
-          callStatus === "listening" ? "rgba(34,197,94,0.4)" :
-          callStatus === "speaking"  ? "rgba(59,130,246,0.4)" :
-          "rgba(251,191,36,0.4)"
-        }`,
-        animation:"call-ring-outer 1.8s ease-out infinite",
-      }} />
-      <div style={{
-        position:"absolute", inset:-8, borderRadius:"50%",
-        border: `2px solid ${
-          callStatus === "listening" ? "rgba(34,197,94,0.6)" :
-          callStatus === "speaking"  ? "rgba(59,130,246,0.6)" :
-          "rgba(251,191,36,0.6)"
-        }`,
-        animation:"call-ring-inner 1.8s ease-out infinite 0.3s",
-      }} />
-      {/* Center circle */}
-      <div style={{
-        width:120, height:120, borderRadius:"50%",
-        background: callStatus === "listening" ? "rgba(34,197,94,0.15)" :
-                    callStatus === "speaking"  ? "rgba(59,130,246,0.15)" :
-                    "rgba(251,191,36,0.15)",
-        border: `2px solid ${
-          callStatus === "listening" ? "#22c55e" :
-          callStatus === "speaking"  ? "#3b82f6" :
-          "#fbbf24"
-        }`,
-        display:"flex", alignItems:"center", justifyContent:"center",
-        transition:"all 0.4s ease",
-      }}>
-        <NeuralIcon size={44} />
-      </div>
-    </div>
-
-    {/* Status indicator */}
-    <div style={{ textAlign:"center" }}>
-      <div style={{
-        fontSize:"1.1rem", fontWeight:600, color:"#fff", marginBottom:6,
-      }}>
-        AI Voice Agent
-      </div>
-      <div style={{
-        display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-        fontSize:"0.9rem", fontWeight:500,
-        color: callStatus === "listening" ? "#22c55e" :
-               callStatus === "speaking"  ? "#3b82f6" :
-               "#fbbf24",
-      }}>
-        {/* Animated dot */}
+      {/* Call Agent Overlay */}
+      {callMode && (
         <div style={{
-          width:8, height:8, borderRadius:"50%",
-          background: callStatus === "listening" ? "#22c55e" :
-                      callStatus === "speaking"  ? "#3b82f6" :
-                      "#fbbf24",
-          animation:"call-dot-pulse 1s ease-in-out infinite",
-        }} />
-        {callStatus === "listening" && "🎙️ Listening..."}
-        {callStatus === "thinking"  && "🤖 Thinking..."}
-        {callStatus === "speaking"  && "🔊 Speaking..."}
-      </div>
-    </div>
+          position: "fixed", inset: 0, zIndex: 500,
+          background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)",
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center", gap: 24,
+        }}>
+          {/* Animated ring */}
+          <div style={{ position: "relative", width: 120, height: 120 }}>
+            {/* Outer pulse rings */}
+            <div style={{
+              position: "absolute", inset: -20, borderRadius: "50%",
+              border: `2px solid ${callStatus === "listening" ? "rgba(34,197,94,0.4)" :
+                  callStatus === "speaking" ? "rgba(59,130,246,0.4)" :
+                    "rgba(251,191,36,0.4)"
+                }`,
+              animation: "call-ring-outer 1.8s ease-out infinite",
+            }} />
+            <div style={{
+              position: "absolute", inset: -8, borderRadius: "50%",
+              border: `2px solid ${callStatus === "listening" ? "rgba(34,197,94,0.6)" :
+                  callStatus === "speaking" ? "rgba(59,130,246,0.6)" :
+                    "rgba(251,191,36,0.6)"
+                }`,
+              animation: "call-ring-inner 1.8s ease-out infinite 0.3s",
+            }} />
+            {/* Center circle */}
+            <div style={{
+              width: 120, height: 120, borderRadius: "50%",
+              background: callStatus === "listening" ? "rgba(34,197,94,0.15)" :
+                callStatus === "speaking" ? "rgba(59,130,246,0.15)" :
+                  "rgba(251,191,36,0.15)",
+              border: `2px solid ${callStatus === "listening" ? "#22c55e" :
+                  callStatus === "speaking" ? "#3b82f6" :
+                    "#fbbf24"
+                }`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.4s ease",
+            }}>
+              <NeuralIcon size={44} />
+            </div>
+          </div>
 
-    {/* Waveform bars — only when speaking or listening */}
-    {(callStatus === "listening" || callStatus === "speaking") && (
-      <div style={{ display:"flex", alignItems:"center", gap:4, height:32 }}>
-        {[1,1.6,1.2,1.8,1,1.4,1.7,1.1,1.5,1].map((h, i) => (
-          <div key={i} style={{
-            width:4, borderRadius:4,
-            background: callStatus === "listening" ? "#22c55e" : "#3b82f6",
-            animation:`call-wave 0.8s ease-in-out infinite`,
-            animationDelay:`${i * 0.08}s`,
-            height: `${h * 14}px`,
-            opacity:0.8,
-          }} />
-        ))}
-      </div>
-    )}
+          {/* Status indicator */}
+          <div style={{ textAlign: "center" }}>
+            <div style={{
+              fontSize: "1.1rem", fontWeight: 600, color: "#fff", marginBottom: 6,
+            }}>
+              AI Voice Agent
+            </div>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              fontSize: "0.9rem", fontWeight: 500,
+              color: callStatus === "listening" ? "#22c55e" :
+                callStatus === "speaking" ? "#3b82f6" :
+                  "#fbbf24",
+            }}>
+              {/* Animated dot */}
+              <div style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: callStatus === "listening" ? "#22c55e" :
+                  callStatus === "speaking" ? "#3b82f6" :
+                    "#fbbf24",
+                animation: "call-dot-pulse 1s ease-in-out infinite",
+              }} />
+              {callStatus === "listening" && "🎙️ Listening..."}
+              {callStatus === "thinking" && "🤖 Thinking..."}
+              {callStatus === "speaking" && "🔊 Speaking..."}
+            </div>
+          </div>
 
-    {/* End call button */}
-    <button onClick={endCall} style={{
-      marginTop:8, width:60, height:60, borderRadius:"50%",
-      background:"#ef4444", border:"none", cursor:"pointer",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      boxShadow:"0 4px 20px rgba(239,68,68,0.5)",
-      transition:"transform 0.15s, box-shadow 0.15s",
-    }}
-    onMouseEnter={(e) => { e.currentTarget.style.transform="scale(1.1)"; }}
-    onMouseLeave={(e) => { e.currentTarget.style.transform="scale(1)"; }}
-    >
-      {/* Phone hang-up icon */}
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7 2 2 0 012 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.42 19.42 0 013.43 9.19 19.79 19.79 0 01.36 .54 2 2 0 012.35.54h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.33 8.45a16 16 0 004.35 4.86z"
-          fill="white"/>
-        <line x1="1" y1="1" x2="23" y2="23" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-      </svg>
-    </button>
+          {/* Waveform bars — only when speaking or listening */}
+          {(callStatus === "listening" || callStatus === "speaking") && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32 }}>
+              {[1, 1.6, 1.2, 1.8, 1, 1.4, 1.7, 1.1, 1.5, 1].map((h, i) => (
+                <div key={i} style={{
+                  width: 4, borderRadius: 4,
+                  background: callStatus === "listening" ? "#22c55e" : "#3b82f6",
+                  animation: `call-wave 0.8s ease-in-out infinite`,
+                  animationDelay: `${i * 0.08}s`,
+                  height: `${h * 14}px`,
+                  opacity: 0.8,
+                }} />
+              ))}
+            </div>
+          )}
 
-    <p style={{ color:"rgba(255,255,255,0.4)", fontSize:"0.78rem" }}>
-      Tap red button to end call
-    </p>
-  </div>
-)} 
+          {/* End call button */}
+          <button onClick={endCall} style={{
+            marginTop: 8, width: 60, height: 60, borderRadius: "50%",
+            background: "#ef4444", border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 20px rgba(239,68,68,0.5)",
+            transition: "transform 0.15s, box-shadow 0.15s",
+          }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.1)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+          >
+            {/* Phone hang-up icon */}
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7 2 2 0 012 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.42 19.42 0 013.43 9.19 19.79 19.79 0 01.36 .54 2 2 0 012.35.54h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.33 8.45a16 16 0 004.35 4.86z"
+                fill="white" />
+              <line x1="1" y1="1" x2="23" y2="23" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.78rem" }}>
+            Tap red button to end call
+          </p>
+        </div>
+      )}
       {listening && (
         <div className="voice-overlay">
           <div className="voice-modal">
@@ -1963,32 +1985,32 @@ const endCall = () => {
           onClick={startCall}
           title="Start Voice Call"
           style={{
-            position:"fixed", bottom:28, left:24, zIndex:900,
-            width:56, height:56, borderRadius:"50%",
-            background:"linear-gradient(135deg, #22c55e, #16a34a)",
-            border:"none", cursor:"pointer",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            boxShadow:"0 4px 20px rgba(34,197,94,0.5)",
-            transition:"transform 0.2s, box-shadow 0.2s",
+            position: "fixed", bottom: 28, left: 24, zIndex: 900,
+            width: 56, height: 56, borderRadius: "50%",
+            background: "linear-gradient(135deg, #22c55e, #16a34a)",
+            border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 20px rgba(34,197,94,0.5)",
+            transition: "transform 0.2s, box-shadow 0.2s",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform="scale(1.12)";
-            e.currentTarget.style.boxShadow="0 6px 28px rgba(34,197,94,0.7)";
+            e.currentTarget.style.transform = "scale(1.12)";
+            e.currentTarget.style.boxShadow = "0 6px 28px rgba(34,197,94,0.7)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform="scale(1)";
-            e.currentTarget.style.boxShadow="0 4px 20px rgba(34,197,94,0.5)";
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.boxShadow = "0 4px 20px rgba(34,197,94,0.5)";
           }}
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
             <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
-              fill="white"/>
+              fill="white" />
           </svg>
           <span style={{
-            position:"absolute", inset:-4, borderRadius:"50%",
-            border:"2px solid rgba(34,197,94,0.4)",
-            animation:"call-ring-outer 2s ease-out infinite",
-            pointerEvents:"none",
+            position: "absolute", inset: -4, borderRadius: "50%",
+            border: "2px solid rgba(34,197,94,0.4)",
+            animation: "call-ring-outer 2s ease-out infinite",
+            pointerEvents: "none",
           }} />
         </button>
       )}
@@ -1996,10 +2018,10 @@ const endCall = () => {
       {/* Toast */}
       {toast && (
         <div style={{
-          position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)",
-          background:"#1e293b", color:"#fff", padding:"10px 20px",
-          borderRadius:8, fontSize:14, zIndex:9999,
-          boxShadow:"0 4px 12px rgba(0,0,0,0.3)", whiteSpace:"nowrap",
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#1e293b", color: "#fff", padding: "10px 20px",
+          borderRadius: 8, fontSize: 14, zIndex: 9999,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)", whiteSpace: "nowrap",
         }}>
           {toast}
         </div>
@@ -2008,10 +2030,10 @@ const endCall = () => {
       {/* Toast */}
       {toast && (
         <div style={{
-          position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)",
-          background:"#1e293b", color:"#fff", padding:"10px 20px",
-          borderRadius:8, fontSize:14, zIndex:9999,
-          boxShadow:"0 4px 12px rgba(0,0,0,0.3)", whiteSpace:"nowrap",
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#1e293b", color: "#fff", padding: "10px 20px",
+          borderRadius: 8, fontSize: 14, zIndex: 9999,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)", whiteSpace: "nowrap",
         }}>
           {toast}
         </div>
