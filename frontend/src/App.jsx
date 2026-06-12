@@ -1109,48 +1109,71 @@ const callRecognitionRef = useRef(null);
 // ── Call Agent ──────────────────────────────────────────
 const startCallListening = () => {
   if (!callModeRef.current) return;
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) return;
-
-  // Don't start if already running
-  if (callRecognitionRef.current) return;
-
-  const recognition = new SpeechRecognition();
-  recognition.lang = language;
-  recognition.interimResults = false;
-  recognition.continuous = false;
-  callRecognitionRef.current = recognition;
   setCallStatus("listening");
 
-  recognition.onresult = (e) => {
-    const transcript = e.results[0][0].transcript;
-    if (!transcript.trim()) return;
-    // If AI is speaking, interrupt it
-    if (speakingRef.current) {
-      window.speechSynthesis.cancel();
-      speakingRef.current = false;
-      setCallStatus("idle");
-    }
-    callRecognitionRef.current = null;
-    sendCallMessage(transcript.trim());
-  };
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then((stream) => {
+      if (!callModeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
 
-  recognition.onerror = () => {
-    callRecognitionRef.current = null;
-    if (callModeRef.current) {
-      setTimeout(() => startCallListening(), 500);
-    }
-  };
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      callRecognitionRef.current = mediaRecorder;
+      const chunks = [];
 
-  recognition.onend = () => {
-    callRecognitionRef.current = null;
-    // If not speaking or thinking, restart listening
-    if (callModeRef.current && !speakingRef.current) {
-      setTimeout(() => startCallListening(), 300);
-    }
-  };
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
 
-  recognition.start();
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        callRecognitionRef.current = null;
+        if (!callModeRef.current) return;
+
+        const blob = new Blob(chunks, { type: "audio/webm" });
+
+        // Skip if audio too short (silence)
+        if (blob.size < 1000) {
+          if (callModeRef.current && !speakingRef.current) {
+            setTimeout(() => startCallListening(), 300);
+          }
+          return;
+        }
+
+        try {
+          setCallStatus("thinking");
+          const formData = new FormData();
+          formData.append("audio", blob, "audio.webm");
+          formData.append("language", language.split("-")[0]);
+
+          const res = await fetch(`${API}/call/transcribe`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${tokenRef.current}` },
+            body: formData,
+          });
+
+          const data = await res.json();
+          const transcript = data.transcript?.trim();
+
+          if (transcript && callModeRef.current) {
+            sendCallMessage(transcript);
+          } else {
+            if (callModeRef.current) setTimeout(() => startCallListening(), 300);
+          }
+        } catch (err) {
+          console.error("Transcription error:", err);
+          if (callModeRef.current) setTimeout(() => startCallListening(), 300);
+        }
+      };
+
+      // Record for 5 seconds then transcribe
+      mediaRecorder.start();
+      setTimeout(() => {
+        if (mediaRecorder.state === "recording") mediaRecorder.stop();
+      }, 5000);
+    })
+    .catch((err) => {
+      console.error("Mic error:", err);
+      if (callModeRef.current) setTimeout(() => startCallListening(), 1000);
+    });
 };
 
 const sendCallMessage = async (text) => {
@@ -1275,12 +1298,14 @@ const endCall = () => {
   speakingRef.current = false;
   setCallMode(false);
   setCallStatus("idle");
-  // Stop recognition
   if (callRecognitionRef.current) {
-    callRecognitionRef.current.abort();
+    try {
+      if (callRecognitionRef.current.state === "recording") {
+        callRecognitionRef.current.stop();
+      }
+    } catch (e) {}
     callRecognitionRef.current = null;
   }
-  // Stop TTS
   window.speechSynthesis.cancel();
 };
   // ── Voice ───────────────────────────────────────────────

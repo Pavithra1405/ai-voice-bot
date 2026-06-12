@@ -1,7 +1,5 @@
-// backend/server.js
-
 const dotenv = require("dotenv");
-dotenv.config(); // ← MUST BE FIRST
+dotenv.config();
 
 const express = require("express");
 const cors = require("cors");
@@ -10,10 +8,11 @@ const chatRoutes = require("./routes/chatRoutes");
 const authRoutes = require("./routes/authRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const callRoutes = require("./routes/callRoutes"); // ← ADD THIS
 
 connectDB();
 
-const app = express(); // ← app created first
+const app = express();
 
 app.use(cors({
   origin: [
@@ -27,6 +26,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/call", callRoutes); // ← ADD THIS
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
