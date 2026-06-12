@@ -1937,6 +1937,41 @@ const endCall = () => {
           {listening ? "🔴 Recording — tap mic or Stop to cancel" : "Hey there! How can I help you?"}
         </p>
       </div>
+      {/* Floating Call Button */}
+      {!callMode && (
+        <button
+          onClick={startCall}
+          title="Start Voice Call"
+          style={{
+            position:"fixed", bottom:28, left:24, zIndex:900,
+            width:56, height:56, borderRadius:"50%",
+            background:"linear-gradient(135deg, #22c55e, #16a34a)",
+            border:"none", cursor:"pointer",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            boxShadow:"0 4px 20px rgba(34,197,94,0.5)",
+            transition:"transform 0.2s, box-shadow 0.2s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform="scale(1.12)";
+            e.currentTarget.style.boxShadow="0 6px 28px rgba(34,197,94,0.7)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform="scale(1)";
+            e.currentTarget.style.boxShadow="0 4px 20px rgba(34,197,94,0.5)";
+          }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
+              fill="white"/>
+          </svg>
+          <span style={{
+            position:"absolute", inset:-4, borderRadius:"50%",
+            border:"2px solid rgba(34,197,94,0.4)",
+            animation:"call-ring-outer 2s ease-out infinite",
+            pointerEvents:"none",
+          }} />
+        </button>
+      )}
 
       {/* Toast */}
       {toast && (
@@ -1949,6 +1984,19 @@ const endCall = () => {
           {toast}
         </div>
       )}
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)",
+          background:"#1e293b", color:"#fff", padding:"10px 20px",
+          borderRadius:8, fontSize:14, zIndex:9999,
+          boxShadow:"0 4px 12px rgba(0,0,0,0.3)", whiteSpace:"nowrap",
+        }}>
+          {toast}
+        </div>
+      )}
+
     </div>
   );
 }
