@@ -1232,7 +1232,7 @@ const sendCallMessage = async (text) => {
   }
 };
 
-const speakCallReply = (text, botId) => {
+const speakCallReply = (text) => {
   if (!callModeRef.current) return;
   window.speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
@@ -1240,11 +1240,62 @@ const speakCallReply = (text, botId) => {
   speakingRef.current = true;
   setCallStatus("speaking");
 
+  // ── Barge-in: start recognition while speaking ──
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let bargeRecognition = null;
+
+  if (SpeechRecognition) {
+    bargeRecognition = new SpeechRecognition();
+    bargeRecognition.lang = language;
+    bargeRecognition.interimResults = true;
+    bargeRecognition.continuous = false;
+
+    bargeRecognition.onspeechstart = () => {
+      // User started speaking — interrupt AI immediately
+      if (speakingRef.current) {
+        window.speechSynthesis.cancel();
+        speakingRef.current = false;
+        setCallStatus("listening");
+      }
+    };
+
+    bargeRecognition.onresult = (e) => {
+      const isFinal = e.results[e.results.length - 1].isFinal;
+      const transcript = e.results[e.results.length - 1][0].transcript;
+      if (isFinal && transcript.trim()) {
+        bargeRecognition = null;
+        if (callRecognitionRef.current) {
+          callRecognitionRef.current.abort();
+          callRecognitionRef.current = null;
+        }
+        sendCallMessage(transcript.trim());
+      }
+    };
+
+    bargeRecognition.onerror = () => { bargeRecognition = null; };
+
+    bargeRecognition.onend = () => {
+      // If AI finished speaking normally (no barge-in), start regular listening
+      if (callModeRef.current && !speakingRef.current) {
+        setTimeout(() => startCallListening(), 300);
+      }
+      bargeRecognition = null;
+    };
+
+    // Small delay so TTS starts first
+    setTimeout(() => {
+      try { bargeRecognition?.start(); } catch (e) {}
+    }, 400);
+  }
+
   utter.onend = () => {
     speakingRef.current = false;
     if (callModeRef.current) {
       setCallStatus("listening");
-      setTimeout(() => startCallListening(), 300);
+      // Only start listening if barge recognition already ended
+      if (!bargeRecognition) {
+        setTimeout(() => startCallListening(), 300);
+      }
     }
   };
 
