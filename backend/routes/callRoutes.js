@@ -46,8 +46,9 @@ router.post("/transcribe", auth, upload.single("audio"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No audio file" });
 
-    // Silence check — silent audio is always very small
-    if (req.file.size < 1500) {
+    // Frontend threshold: 4000 bytes
+    // Backend threshold: 3000 bytes (safety net)
+    if (req.file.size < 3000) {
       console.log("❌ No speech detected — audio too small:", req.file.size, "bytes");
       return res.json({ transcript: "", valid: false, reason: "too_small" });
     }
@@ -73,6 +74,9 @@ router.post("/transcribe", auth, upload.single("audio"), async (req, res) => {
     );
 
     const transcript = response.data.text?.trim() || "";
+
+    // Log audio size + transcript for threshold tuning
+    console.log("Audio size:", req.file.size, "| Transcript:", JSON.stringify(transcript));
 
     if (!isValidTranscript(transcript)) {
       return res.json({ transcript: "", valid: false, reason: "garbage" });
