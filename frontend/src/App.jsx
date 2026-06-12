@@ -551,7 +551,7 @@ function AdminPanel({ token, onClose }) {
                         className="ap-session-card"
                         style={{
                           border: "1px solid var(--border2)", borderRadius: 12,
-                          background: "var(--bg2)", overflow: "hidden",
+                          background: "var(--bg2)",
                           animation: `ap-slide-in 0.18s ease ${si * 35}ms both`,
                         }}
                       >
@@ -599,7 +599,6 @@ function AdminPanel({ token, onClose }) {
                           <div style={{
                             borderTop: "1px solid var(--border)", padding: "14px 16px",
                             display: "flex", flexDirection: "column", gap: 8,
-                            maxHeight: 380, overflowY: "auto",
                             animation: "ap-slide-in 0.16s ease",
                           }}>
                             {(!session.messages || session.messages.length === 0) ? (
