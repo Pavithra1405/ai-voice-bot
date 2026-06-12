@@ -680,8 +680,12 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
-  const [toast, setToast] = useState("");
-  const [showAdmin, setShowAdmin] = useState(false);
+const [toast, setToast] = useState("");
+const [showAdmin, setShowAdmin] = useState(false);
+
+// ── Call Agent state ────────────────────────────────────
+const [callMode, setCallMode] = useState(false);
+const [callStatus, setCallStatus] = useState("idle"); // idle | listening | thinking | speaking
 
   const chatEndRef = useRef(null);
   const fullReplyRef = useRef("");
@@ -692,8 +696,13 @@ export default function App() {
   const silenceTimerRef = useRef(null);
   const editInputRef = useRef(null);
   const chatScrollRef = useRef(null);
-  const tokenRef = useRef(token);
-  const currentSessionIdRef = useRef(currentSessionId);
+const tokenRef = useRef(token);
+const currentSessionIdRef = useRef(currentSessionId);
+
+// ── Call Agent refs ─────────────────────────────────────
+const callModeRef = useRef(false);
+const speakingRef = useRef(false);
+const callRecognitionRef = useRef(null);
 
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => { currentSessionIdRef.current = currentSessionId; }, [currentSessionId]);
@@ -1097,7 +1106,182 @@ export default function App() {
     setPlayingId(id);
     window.speechSynthesis.speak(utter);
   };
+// ── Call Agent ──────────────────────────────────────────
+const startCallListening = () => {
+  if (!callModeRef.current) return;
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
 
+  // Don't start if already running
+  if (callRecognitionRef.current) return;
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = language;
+  recognition.interimResults = false;
+  recognition.continuous = false;
+  callRecognitionRef.current = recognition;
+  setCallStatus("listening");
+
+  recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    if (!transcript.trim()) return;
+    // If AI is speaking, interrupt it
+    if (speakingRef.current) {
+      window.speechSynthesis.cancel();
+      speakingRef.current = false;
+      setCallStatus("idle");
+    }
+    callRecognitionRef.current = null;
+    sendCallMessage(transcript.trim());
+  };
+
+  recognition.onerror = () => {
+    callRecognitionRef.current = null;
+    if (callModeRef.current) {
+      setTimeout(() => startCallListening(), 500);
+    }
+  };
+
+  recognition.onend = () => {
+    callRecognitionRef.current = null;
+    // If not speaking or thinking, restart listening
+    if (callModeRef.current && !speakingRef.current) {
+      setTimeout(() => startCallListening(), 300);
+    }
+  };
+
+  recognition.start();
+};
+
+const sendCallMessage = async (text) => {
+  if (!callModeRef.current) return;
+  setCallStatus("thinking");
+
+  const now = new Date();
+  const userId = "u" + Date.now();
+  const botId  = "b" + Date.now();
+  setMessages((prev) => [...prev, { role: "user", text, time: now, id: userId }]);
+
+  const newBotMsg = { role: "bot", text: "", thinking: true, time: now, id: botId };
+  setMessages((prev) => [...prev, newBotMsg]);
+
+  fullReplyRef.current = "";
+
+  try {
+    const res = await fetch(`${API}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenRef.current}`,
+      },
+      body: JSON.stringify({ message: text }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      const lines = chunk.split("\n").filter((l) => l.trim());
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const jsonStr = line.replace("data: ", "").trim();
+          if (jsonStr === "[DONE]") {
+            // Update message in UI
+            setMessages((prev) => {
+              const updated = prev.map((m) =>
+                m.id === botId ? { ...m, text: fullReplyRef.current, thinking: false } : m
+              );
+              saveCurrentSession(updated);
+              return updated;
+            });
+            // Speak the reply
+            if (callModeRef.current) speakCallReply(fullReplyRef.current, botId);
+            break;
+          }
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const token_text = parsed.token || "";
+            if (token_text) {
+              fullReplyRef.current += token_text;
+              setMessages((prev) => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  text: fullReplyRef.current, thinking: false,
+                };
+                return updated;
+              });
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (err) {
+    setMessages((prev) => {
+      const updated = [...prev];
+      updated[updated.length - 1] = {
+        ...updated[updated.length - 1],
+        text: "Error reaching server.", thinking: false,
+      };
+      return updated;
+    });
+    if (callModeRef.current) setTimeout(() => startCallListening(), 500);
+  }
+};
+
+const speakCallReply = (text, botId) => {
+  if (!callModeRef.current) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = language;
+  speakingRef.current = true;
+  setCallStatus("speaking");
+
+  utter.onend = () => {
+    speakingRef.current = false;
+    if (callModeRef.current) {
+      setCallStatus("listening");
+      setTimeout(() => startCallListening(), 300);
+    }
+  };
+
+  utter.onerror = () => {
+    speakingRef.current = false;
+    if (callModeRef.current) {
+      setCallStatus("listening");
+      setTimeout(() => startCallListening(), 300);
+    }
+  };
+
+  window.speechSynthesis.speak(utter);
+};
+
+const startCall = () => {
+  callModeRef.current = true;
+  setCallMode(true);
+  setCallStatus("listening");
+  // Stop any existing regular listening
+  stopListening();
+  window.speechSynthesis.cancel();
+  setTimeout(() => startCallListening(), 400);
+};
+
+const endCall = () => {
+  callModeRef.current = false;
+  speakingRef.current = false;
+  setCallMode(false);
+  setCallStatus("idle");
+  // Stop recognition
+  if (callRecognitionRef.current) {
+    callRecognitionRef.current.abort();
+    callRecognitionRef.current = null;
+  }
+  // Stop TTS
+  window.speechSynthesis.cancel();
+};
   // ── Voice ───────────────────────────────────────────────
   const startListening = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1342,7 +1526,14 @@ export default function App() {
               </div>
             )}
           </div>
-
+        {/* Call Agent button */}
+<button className="icon-btn" onClick={startCall} title="Start Voice Call"
+  style={{ color:"#22c55e", borderColor:"rgba(34,197,94,0.4)" }}>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+</button>
           {/* Admin button — only for admins */}
           {user?.isAdmin && (
             <button className="icon-btn" onClick={() => setShowAdmin(true)} title="Admin Panel"
@@ -1414,6 +1605,14 @@ export default function App() {
                   ))}
                 </select>
               </div>
+              <button className="mobile-menu-item" onClick={() => { startCall(); setMenuOpen(false); }}
+  style={{ color:"#22c55e" }}>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+  <span>Start Voice Call</span>
+</button>
               {user?.isAdmin && (
                 <button className="mobile-menu-item" onClick={() => { setShowAdmin(true); setMenuOpen(false); }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -1545,7 +1744,121 @@ export default function App() {
           <div ref={chatEndRef} />
         </div>
       </main>
+    {/* Call Agent Overlay */}
+{callMode && (
+  <div style={{
+    position:"fixed", inset:0, zIndex:500,
+    background:"rgba(0,0,0,0.85)", backdropFilter:"blur(12px)",
+    display:"flex", flexDirection:"column",
+    alignItems:"center", justifyContent:"center", gap:24,
+  }}>
+    {/* Animated ring */}
+    <div style={{ position:"relative", width:120, height:120 }}>
+      {/* Outer pulse rings */}
+      <div style={{
+        position:"absolute", inset:-20, borderRadius:"50%",
+        border: `2px solid ${
+          callStatus === "listening" ? "rgba(34,197,94,0.4)" :
+          callStatus === "speaking"  ? "rgba(59,130,246,0.4)" :
+          "rgba(251,191,36,0.4)"
+        }`,
+        animation:"call-ring-outer 1.8s ease-out infinite",
+      }} />
+      <div style={{
+        position:"absolute", inset:-8, borderRadius:"50%",
+        border: `2px solid ${
+          callStatus === "listening" ? "rgba(34,197,94,0.6)" :
+          callStatus === "speaking"  ? "rgba(59,130,246,0.6)" :
+          "rgba(251,191,36,0.6)"
+        }`,
+        animation:"call-ring-inner 1.8s ease-out infinite 0.3s",
+      }} />
+      {/* Center circle */}
+      <div style={{
+        width:120, height:120, borderRadius:"50%",
+        background: callStatus === "listening" ? "rgba(34,197,94,0.15)" :
+                    callStatus === "speaking"  ? "rgba(59,130,246,0.15)" :
+                    "rgba(251,191,36,0.15)",
+        border: `2px solid ${
+          callStatus === "listening" ? "#22c55e" :
+          callStatus === "speaking"  ? "#3b82f6" :
+          "#fbbf24"
+        }`,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        transition:"all 0.4s ease",
+      }}>
+        <NeuralIcon size={44} />
+      </div>
+    </div>
 
+    {/* Status indicator */}
+    <div style={{ textAlign:"center" }}>
+      <div style={{
+        fontSize:"1.1rem", fontWeight:600, color:"#fff", marginBottom:6,
+      }}>
+        AI Voice Agent
+      </div>
+      <div style={{
+        display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+        fontSize:"0.9rem", fontWeight:500,
+        color: callStatus === "listening" ? "#22c55e" :
+               callStatus === "speaking"  ? "#3b82f6" :
+               "#fbbf24",
+      }}>
+        {/* Animated dot */}
+        <div style={{
+          width:8, height:8, borderRadius:"50%",
+          background: callStatus === "listening" ? "#22c55e" :
+                      callStatus === "speaking"  ? "#3b82f6" :
+                      "#fbbf24",
+          animation:"call-dot-pulse 1s ease-in-out infinite",
+        }} />
+        {callStatus === "listening" && "🎙️ Listening..."}
+        {callStatus === "thinking"  && "🤖 Thinking..."}
+        {callStatus === "speaking"  && "🔊 Speaking..."}
+      </div>
+    </div>
+
+    {/* Waveform bars — only when speaking or listening */}
+    {(callStatus === "listening" || callStatus === "speaking") && (
+      <div style={{ display:"flex", alignItems:"center", gap:4, height:32 }}>
+        {[1,1.6,1.2,1.8,1,1.4,1.7,1.1,1.5,1].map((h, i) => (
+          <div key={i} style={{
+            width:4, borderRadius:4,
+            background: callStatus === "listening" ? "#22c55e" : "#3b82f6",
+            animation:`call-wave 0.8s ease-in-out infinite`,
+            animationDelay:`${i * 0.08}s`,
+            height: `${h * 14}px`,
+            opacity:0.8,
+          }} />
+        ))}
+      </div>
+    )}
+
+    {/* End call button */}
+    <button onClick={endCall} style={{
+      marginTop:8, width:60, height:60, borderRadius:"50%",
+      background:"#ef4444", border:"none", cursor:"pointer",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      boxShadow:"0 4px 20px rgba(239,68,68,0.5)",
+      transition:"transform 0.15s, box-shadow 0.15s",
+    }}
+    onMouseEnter={(e) => { e.currentTarget.style.transform="scale(1.1)"; }}
+    onMouseLeave={(e) => { e.currentTarget.style.transform="scale(1)"; }}
+    >
+      {/* Phone hang-up icon */}
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7 2 2 0 012 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.42 19.42 0 013.43 9.19 19.79 19.79 0 01.36 .54 2 2 0 012.35.54h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.33 8.45a16 16 0 004.35 4.86z"
+          fill="white"/>
+        <line x1="1" y1="1" x2="23" y2="23" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+      </svg>
+    </button>
+
+    <p style={{ color:"rgba(255,255,255,0.4)", fontSize:"0.78rem" }}>
+      Tap red button to end call
+    </p>
+  </div>
+)} 
       {listening && (
         <div className="voice-overlay">
           <div className="voice-modal">
