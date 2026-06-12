@@ -705,6 +705,7 @@ export default function App() {
   const callModeRef = useRef(false);
   const speakingRef = useRef(false);
   const callRecognitionRef = useRef(null);
+  const bargeInStreamRef = useRef(null);
 
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => { currentSessionIdRef.current = currentSessionId; }, [currentSessionId]);
@@ -1109,141 +1110,141 @@ export default function App() {
     window.speechSynthesis.speak(utter);
   };
   // ── Call Agent ───────────────────────────────────────────
- const startCallListening = () => {
-  if (!callModeRef.current) return;
-  setCallStatus("listening");
+  const startCallListening = () => {
+    if (!callModeRef.current) return;
+    setCallStatus("listening");
 
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then((stream) => {
-      if (!callModeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        if (!callModeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      callRecognitionRef.current = mediaRecorder;
-      const chunks = [];
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        callRecognitionRef.current = mediaRecorder;
+        const chunks = [];
 
-      // ── Silence detection via AnalyserNode ──
-      const audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 512;
-      source.connect(analyser);
+        // ── Silence detection via AnalyserNode ──
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
 
-      const dataArray = new Float32Array(analyser.fftSize);
-      let silenceStart = null;
-      let speechDetected = false;
-      const SILENCE_THRESHOLD = 0.015;   // same as your RMS threshold
-      const SILENCE_DURATION = 2000;     // stop after 2s of silence
-      const MAX_DURATION = 30000;        // hard cap 30s
+        const dataArray = new Float32Array(analyser.fftSize);
+        let silenceStart = null;
+        let speechDetected = false;
+        const SILENCE_THRESHOLD = 0.015;   // same as your RMS threshold
+        const SILENCE_DURATION = 2000;     // stop after 2s of silence
+        const MAX_DURATION = 30000;        // hard cap 30s
 
-      const maxTimer = setTimeout(() => {
-        if (mediaRecorder.state === "recording") mediaRecorder.stop();
-      }, MAX_DURATION);
+        const maxTimer = setTimeout(() => {
+          if (mediaRecorder.state === "recording") mediaRecorder.stop();
+        }, MAX_DURATION);
 
-      const silenceInterval = setInterval(() => {
-        analyser.getFloatTimeDomainData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
-        const rms = Math.sqrt(sum / dataArray.length);
-
-        if (rms > SILENCE_THRESHOLD) {
-          speechDetected = true;
-          silenceStart = null; // reset silence timer on speech
-        } else if (speechDetected) {
-          // Only count silence AFTER speech has started
-          if (!silenceStart) silenceStart = Date.now();
-          if (Date.now() - silenceStart > SILENCE_DURATION) {
-            clearInterval(silenceInterval);
-            clearTimeout(maxTimer);
-            if (mediaRecorder.state === "recording") mediaRecorder.stop();
-          }
-        }
-      }, 100);
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        clearInterval(silenceInterval);
-        clearTimeout(maxTimer);
-        audioContext.close();
-        stream.getTracks().forEach(t => t.stop());
-        callRecognitionRef.current = null;
-        if (!callModeRef.current) return;
-
-        const blob = new Blob(chunks, { type: "audio/webm" });
-
-        if (blob.size < 4000) {
-          if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
-          return;
-        }
-
-        // ── RMS energy check (same as before) ──
-        try {
-          const arrayBuffer = await blob.arrayBuffer();
-          const ac = new AudioContext();
-          const audioBuffer = await ac.decodeAudioData(arrayBuffer);
-          const channelData = audioBuffer.getChannelData(0);
+        const silenceInterval = setInterval(() => {
+          analyser.getFloatTimeDomainData(dataArray);
           let sum = 0;
-          for (let i = 0; i < channelData.length; i++) sum += channelData[i] * channelData[i];
-          const rms = Math.sqrt(sum / channelData.length);
-          console.log("🎙️ Audio RMS energy:", rms);
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+          const rms = Math.sqrt(sum / dataArray.length);
 
-          if (rms < 0.01) {
-            console.log("❌ No real speech — low energy:", rms);
+          if (rms > SILENCE_THRESHOLD) {
+            speechDetected = true;
+            silenceStart = null; // reset silence timer on speech
+          } else if (speechDetected) {
+            // Only count silence AFTER speech has started
+            if (!silenceStart) silenceStart = Date.now();
+            if (Date.now() - silenceStart > SILENCE_DURATION) {
+              clearInterval(silenceInterval);
+              clearTimeout(maxTimer);
+              if (mediaRecorder.state === "recording") mediaRecorder.stop();
+            }
+          }
+        }, 100);
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          clearInterval(silenceInterval);
+          clearTimeout(maxTimer);
+          audioContext.close();
+          stream.getTracks().forEach(t => t.stop());
+          callRecognitionRef.current = null;
+          if (!callModeRef.current) return;
+
+          const blob = new Blob(chunks, { type: "audio/webm" });
+
+          if (blob.size < 4000) {
             if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
             return;
           }
-          console.log("✅ Real speech detected — energy:", rms);
-        } catch (e) {
-          console.log("⚠️ Energy check failed, continuing:", e.message);
-        }
 
-        // ── Transcribe ──
-        try {
-          setCallStatus("thinking");
-          const formData = new FormData();
-          formData.append("audio", blob, "audio.webm");
-          formData.append("language", language.split("-")[0]);
+          // ── RMS energy check (same as before) ──
+          try {
+            const arrayBuffer = await blob.arrayBuffer();
+            const ac = new AudioContext();
+            const audioBuffer = await ac.decodeAudioData(arrayBuffer);
+            const channelData = audioBuffer.getChannelData(0);
+            let sum = 0;
+            for (let i = 0; i < channelData.length; i++) sum += channelData[i] * channelData[i];
+            const rms = Math.sqrt(sum / channelData.length);
+            console.log("🎙️ Audio RMS energy:", rms);
 
-          const res = await fetch(`${API}/call/transcribe`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${tokenRef.current}` },
-            body: formData,
-          });
+            if (rms < 0.01) {
+              console.log("❌ No real speech — low energy:", rms);
+              if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
+              return;
+            }
+            console.log("✅ Real speech detected — energy:", rms);
+          } catch (e) {
+            console.log("⚠️ Energy check failed, continuing:", e.message);
+          }
 
-          const data = await res.json();
-          const transcript = data.transcript?.trim();
+          // ── Transcribe ──
+          try {
+            setCallStatus("thinking");
+            const formData = new FormData();
+            formData.append("audio", blob, "audio.webm");
+            formData.append("language", language.split("-")[0]);
 
-          if (data.valid && transcript && callModeRef.current) {
-            const isShortPhrase = transcript.split(" ").length <= 3;
-            const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
+            const res = await fetch(`${API}/call/transcribe`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${tokenRef.current}` },
+              body: formData,
+            });
 
-            if (isShortPhrase && isSameAsLast) {
-              console.log("❌ Repeated noise ignored:", transcript);
+            const data = await res.json();
+            const transcript = data.transcript?.trim();
+
+            if (data.valid && transcript && callModeRef.current) {
+              const isShortPhrase = transcript.split(" ").length <= 3;
+              const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
+
+              if (isShortPhrase && isSameAsLast) {
+                console.log("❌ Repeated noise ignored:", transcript);
+                window._lastCallTranscript = "";
+                if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
+              } else {
+                window._lastCallTranscript = transcript.toLowerCase();
+                sendCallMessage(transcript);
+              }
+            } else {
               window._lastCallTranscript = "";
               if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
-            } else {
-              window._lastCallTranscript = transcript.toLowerCase();
-              sendCallMessage(transcript);
             }
-          } else {
-            window._lastCallTranscript = "";
-            if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
+          } catch (err) {
+            console.error("Transcription error:", err);
+            if (callModeRef.current) setTimeout(() => startCallListening(), 300);
           }
-        } catch (err) {
-          console.error("Transcription error:", err);
-          if (callModeRef.current) setTimeout(() => startCallListening(), 300);
-        }
-      };
+        };
 
-      mediaRecorder.start();
-    })
-    .catch((err) => {
-      console.error("Mic error:", err);
-      if (callModeRef.current) setTimeout(() => startCallListening(), 1000);
-    });
-};
+        mediaRecorder.start();
+      })
+      .catch((err) => {
+        console.error("Mic error:", err);
+        if (callModeRef.current) setTimeout(() => startCallListening(), 1000);
+      });
+  };
   const sendCallMessage = async (text) => {
     if (!callModeRef.current) return;
     setCallStatus("thinking");
@@ -1332,8 +1333,48 @@ export default function App() {
     speakingRef.current = true;
     setCallStatus("speaking");
 
+    // ── Barge-in: listen in background while AI speaks ──
+    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      bargeInStreamRef.current = stream;
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const dataArray = new Float32Array(analyser.fftSize);
+
+      const checkBargeIn = setInterval(() => {
+        if (!speakingRef.current) {
+          clearInterval(checkBargeIn);
+          audioContext.close();
+          stream.getTracks().forEach(t => t.stop());
+          bargeInStreamRef.current = null;
+          return;
+        }
+        analyser.getFloatTimeDomainData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+        const rms = Math.sqrt(sum / dataArray.length);
+
+        if (rms > 0.015) {
+          console.log("⚡ Barge-in! User interrupted. RMS:", rms);
+          clearInterval(checkBargeIn);
+          audioContext.close();
+          stream.getTracks().forEach(t => t.stop());
+          bargeInStreamRef.current = null;
+          window.speechSynthesis.cancel();
+          speakingRef.current = false;
+          setCallStatus("listening");
+          setTimeout(() => startCallListening(), 100);
+        }
+      }, 100);
+    }).catch(() => {
+      // mic unavailable — speak without barge-in
+    });
+
     utter.onend = () => {
       speakingRef.current = false;
+      bargeInStreamRef.current = null;
       if (callModeRef.current) {
         setCallStatus("listening");
         setTimeout(() => startCallListening(), 500);
@@ -1342,6 +1383,7 @@ export default function App() {
 
     utter.onerror = () => {
       speakingRef.current = false;
+      bargeInStreamRef.current = null;
       if (callModeRef.current) {
         setCallStatus("listening");
         setTimeout(() => startCallListening(), 500);
@@ -1362,21 +1404,26 @@ export default function App() {
   };
 
   const endCall = () => {
-    callModeRef.current = false;
-    speakingRef.current = false;
-    setCallMode(false);
-    setCallStatus("idle");
-    window._lastCallTranscript = ""; // ← ADD THIS
-    if (callRecognitionRef.current) {
-      try {
-        if (callRecognitionRef.current.state === "recording") {
-          callRecognitionRef.current.stop();
-        }
-      } catch (e) { }
-      callRecognitionRef.current = null;
-    }
-    window.speechSynthesis.cancel();
-  };
+  callModeRef.current = false;
+  speakingRef.current = false;
+  setCallMode(false);
+  setCallStatus("idle");
+  window._lastCallTranscript = "";
+  if (callRecognitionRef.current) {
+    try {
+      if (callRecognitionRef.current.state === "recording") {
+        callRecognitionRef.current.stop();
+      }
+    } catch (e) { }
+    callRecognitionRef.current = null;
+  }
+  // ← ADD THIS: stop barge-in mic
+  if (bargeInStreamRef.current) {
+    bargeInStreamRef.current.getTracks().forEach(t => t.stop());
+    bargeInStreamRef.current = null;
+  }
+  window.speechSynthesis.cancel();
+};
   // ── Voice ───────────────────────────────────────────────
   const startListening = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
