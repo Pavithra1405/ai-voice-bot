@@ -1355,6 +1355,7 @@ export default function App() {
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
         const rms = Math.sqrt(sum / dataArray.length);
+         console.log("🔍 Barge RMS:", rms); // ← ADD THIS LINE
 
         if (rms > 0.015) {
           console.log("⚡ Barge-in! User interrupted. RMS:", rms);
