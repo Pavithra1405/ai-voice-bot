@@ -1130,8 +1130,8 @@ const startCallListening = () => {
 
         const blob = new Blob(chunks, { type: "audio/webm" });
 
-        // Skip if audio too short (silence)
-        if (blob.size < 1000) {
+        // Frontend size check
+        if (blob.size < 4000) {
           if (callModeRef.current && !speakingRef.current) {
             setTimeout(() => startCallListening(), 300);
           }
@@ -1153,10 +1153,29 @@ const startCallListening = () => {
           const data = await res.json();
           const transcript = data.transcript?.trim();
 
-          if (transcript && callModeRef.current) {
-            sendCallMessage(transcript);
+          // ── Repeat detection ──────────────────────────
+          if (data.valid && transcript && callModeRef.current) {
+            const isShortPhrase = transcript.split(" ").length <= 3;
+            const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
+
+            if (isShortPhrase && isSameAsLast) {
+              // Same short phrase repeated = background noise
+              console.log("❌ Repeated noise ignored:", transcript);
+              window._lastCallTranscript = "";
+              if (callModeRef.current && !speakingRef.current) {
+                setTimeout(() => startCallListening(), 300);
+              }
+            } else {
+              // Valid — send to AI
+              window._lastCallTranscript = transcript.toLowerCase();
+              sendCallMessage(transcript);
+            }
           } else {
-            if (callModeRef.current) setTimeout(() => startCallListening(), 300);
+            // Not valid — keep listening
+            window._lastCallTranscript = "";
+            if (callModeRef.current && !speakingRef.current) {
+              setTimeout(() => startCallListening(), 300);
+            }
           }
         } catch (err) {
           console.error("Transcription error:", err);
@@ -1298,6 +1317,7 @@ const endCall = () => {
   speakingRef.current = false;
   setCallMode(false);
   setCallStatus("idle");
+  window._lastCallTranscript = ""; // ← ADD THIS
   if (callRecognitionRef.current) {
     try {
       if (callRecognitionRef.current.state === "recording") {
