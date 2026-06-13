@@ -1174,7 +1174,7 @@ export default function App() {
         if (!speechDetected && rmsHistory.length >= 5) {
           const sorted = [...rmsHistory].sort((a, b) => a - b);
           const noiseFloor = sorted[Math.floor(sorted.length * 0.5)];
-          adaptiveThreshold = Math.max(0.025, noiseFloor * 3.0);
+          adaptiveThreshold = Math.max(0.015, noiseFloor * 3.0);
           adaptiveThresholdRef.current = adaptiveThreshold;
         }
         if (rms > adaptiveThreshold) {
@@ -1202,7 +1202,7 @@ export default function App() {
         clearTimeout(maxTimer);
         const blob = new Blob(chunks, { type: "audio/webm" });
         const lastRms = rmsHistory.length ? rmsHistory[rmsHistory.length - 1] : 0.05;
-        if (lastRms < 0.025) {
+        if (lastRms < 0.015) {
           console.log("❌ No real speech — low energy:", lastRms.toFixed(4));
           setCallStatus("listening");
           setTimeout(() => startCallListening(), 500);
@@ -1227,7 +1227,7 @@ export default function App() {
           }
           const isShortPhrase = transcript.split(" ").length <= 3;
           const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
-          if (isShortPhrase && isSameAsLast && lastRms < 0.030) {
+          if (isShortPhrase && isSameAsLast && lastRms < 0.020) {
             console.log("❌ Repeated noise ignored:", transcript, "RMS:", lastRms.toFixed(4));
             window._lastCallTranscript = "";
             setCallStatus("listening");
@@ -1348,7 +1348,7 @@ export default function App() {
         bargeSource.connect(bargeAnalyser);
         const bargeData = new Float32Array(bargeAnalyser.fftSize);
         const currentAdaptiveThreshold = adaptiveThresholdRef?.current || 0.025;
-        const bargeThreshold = Math.max(0.055, currentAdaptiveThreshold * 2.2);
+        const bargeThreshold = Math.max(0.035, currentAdaptiveThreshold * 2.2);
         console.log("🎚️ Barge threshold:", bargeThreshold.toFixed(4), "| Session:", sessionId);
         bargeInterval = setInterval(() => {
           if (sessionId !== activeBargeSessionId) { cleanupBarge(); return; }
