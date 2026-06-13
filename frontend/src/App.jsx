@@ -1134,7 +1134,7 @@ export default function App() {
         let speechDetected = false;
         const SILENCE_THRESHOLD = 0.015;   // same as your RMS threshold
         const SILENCE_DURATION = 2000;     // stop after 2s of silence
-        const MAX_DURATION = 30000;        // hard cap 30s
+        const MAX_DURATION = 8000;      // hard cap 8s
 
         const maxTimer = setTimeout(() => {
           if (mediaRecorder.state === "recording") mediaRecorder.stop();
@@ -1355,7 +1355,7 @@ export default function App() {
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
         const rms = Math.sqrt(sum / dataArray.length);
-         console.log("🔍 Barge RMS:", rms); // ← ADD THIS LINE
+        console.log("🔍 Barge RMS:", rms); // ← ADD THIS LINE
 
         if (rms > 0.015) {
           console.log("⚡ Barge-in! User interrupted. RMS:", rms);
@@ -1405,26 +1405,26 @@ export default function App() {
   };
 
   const endCall = () => {
-  callModeRef.current = false;
-  speakingRef.current = false;
-  setCallMode(false);
-  setCallStatus("idle");
-  window._lastCallTranscript = "";
-  if (callRecognitionRef.current) {
-    try {
-      if (callRecognitionRef.current.state === "recording") {
-        callRecognitionRef.current.stop();
-      }
-    } catch (e) { }
-    callRecognitionRef.current = null;
-  }
-  // ← ADD THIS: stop barge-in mic
-  if (bargeInStreamRef.current) {
-    bargeInStreamRef.current.getTracks().forEach(t => t.stop());
-    bargeInStreamRef.current = null;
-  }
-  window.speechSynthesis.cancel();
-};
+    callModeRef.current = false;
+    speakingRef.current = false;
+    setCallMode(false);
+    setCallStatus("idle");
+    window._lastCallTranscript = "";
+    if (callRecognitionRef.current) {
+      try {
+        if (callRecognitionRef.current.state === "recording") {
+          callRecognitionRef.current.stop();
+        }
+      } catch (e) { }
+      callRecognitionRef.current = null;
+    }
+    // ← ADD THIS: stop barge-in mic
+    if (bargeInStreamRef.current) {
+      bargeInStreamRef.current.getTracks().forEach(t => t.stop());
+      bargeInStreamRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+  };
   // ── Voice ───────────────────────────────────────────────
   const startListening = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2087,17 +2087,7 @@ export default function App() {
         </button>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: "#1e293b", color: "#fff", padding: "10px 20px",
-          borderRadius: 8, fontSize: 14, zIndex: 9999,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.3)", whiteSpace: "nowrap",
-        }}>
-          {toast}
-        </div>
-      )}
+
 
       {/* Toast */}
       {toast && (
