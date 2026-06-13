@@ -26,47 +26,37 @@ async function getSharedMicStream() {
         noiseSuppression: true,
         autoGainControl: true,
         sampleRate: 16000,
-      }
+      },
     });
+
     if (!sharedAudioContext) {
       sharedAudioContext = new AudioContext();
     }
+
     if (sharedAudioContext.state === "suspended") {
       await sharedAudioContext.resume();
     }
+
     sharedSource = sharedAudioContext.createMediaStreamSource(sharedMicStream);
     sharedAnalyser = sharedAudioContext.createAnalyser();
     sharedAnalyser.fftSize = 2048;
     sharedSource.connect(sharedAnalyser);
-    if (!window._audioKeepAlive) {
-      window._audioKeepAlive = setInterval(() => {
-        if (sharedAudioContext?.state === "suspended") {
-          sharedAudioContext.resume().catch(() => {});
-        }
-      }, 3000);
-    }
   }
+
   if (sharedAudioContext.state === "suspended") {
     await sharedAudioContext.resume();
   }
+
   return { stream: sharedMicStream, audioContext: sharedAudioContext, analyser: sharedAnalyser };
 }
 
 function cleanupSharedAudio() {
-  if (window._audioKeepAlive) {
-    clearInterval(window._audioKeepAlive);
-    window._audioKeepAlive = null;
-  }
-  if (window._audioWatchdog) {
-    clearTimeout(window._audioWatchdog);
-    window._audioWatchdog = null;
-  }
   if (sharedSource) {
-    try { sharedSource.disconnect(); } catch {}
+    try { sharedSource.disconnect(); } catch { /* already disconnected */ }
     sharedSource = null;
   }
   if (sharedMicStream) {
-    sharedMicStream.getTracks().forEach(t => t.stop());
+    sharedMicStream.getTracks().forEach((t) => t.stop());
     sharedMicStream = null;
   }
   if (sharedAudioContext) {
@@ -190,7 +180,9 @@ function SharedChatView() {
   );
 }
 
-// ── Admin Panel ─────────────────────────────────────────────
+
+
+// ── Admin Panel — Full-screen split layout ───────────────────
 function AdminPanel({ token, onClose }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -202,7 +194,7 @@ function AdminPanel({ token, onClose }) {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [toast, setToast] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
-  const [showDetail, setShowDetail] = useState(false);
+  const [showDetail, setShowDetail] = useState(false); // mobile: show right panel
   const toastTimer = useRef(null);
 
   const showToast = (msg) => {
@@ -265,6 +257,7 @@ function AdminPanel({ token, onClose }) {
     } catch { showToast("❌ Failed to delete user"); }
   };
 
+  // Skeleton shimmer block
   const Shimmer = ({ w = "100%", h = 12, r = 6 }) => (
     <div style={{
       width: w, height: h, borderRadius: r,
@@ -310,6 +303,7 @@ function AdminPanel({ token, onClose }) {
         .ap-icon-btn:active { transform: scale(0.94); }
         .ap-session-card { transition: box-shadow 0.15s, background 0.13s; }
         .ap-session-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.12); background: var(--bg3) !important; }
+        /* Mobile back button */
         .ap-back-btn { display: none; }
         @media (max-width: 680px) {
           .ap-left  { display: block; }
@@ -321,18 +315,21 @@ function AdminPanel({ token, onClose }) {
         }
       `}</style>
 
+      {/* Full-screen overlay */}
       <div style={{
         position: "fixed", inset: 0, zIndex: 1000,
         background: "var(--bg)", display: "flex", flexDirection: "column",
         animation: "ap-slide-in 0.2s ease",
         fontFamily: "inherit",
       }}>
-        {/* Top bar */}
+
+        {/* ── Top bar ── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "0 24px", height: 58, borderBottom: "1px solid var(--border)",
           background: "var(--bg2)", flexShrink: 0, gap: 16,
         }}>
+          {/* Left: logo + title */}
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{
               width: 34, height: 34, borderRadius: 10,
@@ -354,13 +351,15 @@ function AdminPanel({ token, onClose }) {
               </div>
             </div>
           </div>
+
+          {/* Right: refresh + close */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button className="ap-icon-btn" onClick={loadUsers} title="Refresh" style={{ width: "auto", padding: "0 12px", gap: 6, color: "var(--text2)", fontSize: "0.82rem" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                 <path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span>Refresh</span>
+              <span style={{ display: "inline" }}>Refresh</span>
             </button>
             <button className="ap-icon-btn" onClick={onClose} title="Close" style={{ color: "var(--text2)" }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
@@ -370,24 +369,29 @@ function AdminPanel({ token, onClose }) {
           </div>
         </div>
 
-        {/* Split body */}
+        {/* ── Split body ── */}
         <div className="ap-split" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-          {/* LEFT — User list */}
+          {/* ════ LEFT — User list ════ */}
           <div
             className={`ap-left ${showDetail ? "mobile-hidden" : ""}`}
             style={{
               width: 320, minWidth: 280, borderRight: "1px solid var(--border)",
-              display: "flex", flexDirection: "column", background: "var(--bg2)", flexShrink: 0,
+              display: "flex", flexDirection: "column", background: "var(--bg2)",
+              flexShrink: 0,
             }}
           >
+            {/* List header */}
             <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
               <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 All Users
               </div>
             </div>
+
+            {/* List body */}
             <div style={{ flex: 1, overflowY: "auto" }}>
               {loading ? (
+                // Skeleton list
                 [1, 0.85, 0.7, 0.55, 0.4].map((op, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", opacity: op }}>
                     <div style={{
@@ -421,6 +425,7 @@ function AdminPanel({ token, onClose }) {
                       animation: "ap-slide-in 0.18s ease",
                     }}
                   >
+                    {/* Avatar */}
                     <div style={{
                       width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
                       background: u.isAdmin ? "var(--accent)" : u.isBanned ? "rgba(239,68,68,0.2)" : "var(--bg4)",
@@ -430,6 +435,8 @@ function AdminPanel({ token, onClose }) {
                     }}>
                       {u.name?.[0]?.toUpperCase()}
                     </div>
+
+                    {/* Name + email */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         <span style={{ fontSize: "0.86rem", fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -445,6 +452,8 @@ function AdminPanel({ token, onClose }) {
                         {u.email}
                       </div>
                     </div>
+
+                    {/* Status dot */}
                     <div style={{
                       width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
                       background: u.isBanned ? "#ef4444" : "#22c55e",
@@ -456,12 +465,13 @@ function AdminPanel({ token, onClose }) {
             </div>
           </div>
 
-          {/* RIGHT — Detail panel */}
+          {/* ════ RIGHT — Detail panel ════ */}
           <div
             className={`ap-right ${!showDetail ? "mobile-hidden" : ""}`}
             style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)" }}
           >
             {!selectedUser ? (
+              // Empty state
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "var(--text3)" }}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" opacity={0.3}>
                   <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -472,11 +482,13 @@ function AdminPanel({ token, onClose }) {
               </div>
             ) : (
               <>
+                {/* ── Detail header ── */}
                 <div style={{
                   padding: "16px 24px", borderBottom: "1px solid var(--border)",
                   background: "var(--bg2)", flexShrink: 0,
                   display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
                 }}>
+                  {/* Mobile back */}
                   <button
                     className="ap-back-btn ap-icon-btn"
                     onClick={() => { setShowDetail(false); setSelectedUser(null); }}
@@ -486,6 +498,8 @@ function AdminPanel({ token, onClose }) {
                       <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
+
+                  {/* Big avatar */}
                   <div style={{
                     width: 48, height: 48, borderRadius: "50%", flexShrink: 0,
                     background: selectedUser.isAdmin ? "var(--accent)" : selectedUser.isBanned ? "rgba(239,68,68,0.2)" : "var(--bg4)",
@@ -496,6 +510,8 @@ function AdminPanel({ token, onClose }) {
                   }}>
                     {selectedUser.name?.[0]?.toUpperCase()}
                   </div>
+
+                  {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text)" }}>{selectedUser.name}</span>
@@ -517,6 +533,8 @@ function AdminPanel({ token, onClose }) {
                       {selectedUser.email} · Joined {new Date(selectedUser.createdAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} · {selectedUser.sessionCount} chat{selectedUser.sessionCount !== 1 ? "s" : ""}
                     </div>
                   </div>
+
+                  {/* Actions */}
                   {!selectedUser.isAdmin && (
                     <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                       <button
@@ -538,6 +556,7 @@ function AdminPanel({ token, onClose }) {
                         )}
                         {selectedUser.isBanned ? "Unban" : "Ban"}
                       </button>
+
                       {deleteConfirmId === selectedUser._id ? (
                         <div style={{ display: "flex", gap: 6 }}>
                           <button className="ap-icon-btn" onClick={() => deleteUser(selectedUser._id)}
@@ -562,11 +581,12 @@ function AdminPanel({ token, onClose }) {
                   )}
                 </div>
 
-                {/* Sessions list */}
+                {/* ── Sessions list ── */}
                 <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
                     Chat Sessions
                   </div>
+
                   {sessionsLoading[selectedUser._id] ? (
                     [1, 0.8, 0.6].map((op, i) => (
                       <div key={i} style={{ borderRadius: 12, overflow: "hidden", opacity: op }}>
@@ -592,6 +612,7 @@ function AdminPanel({ token, onClose }) {
                           animation: `ap-slide-in 0.18s ease ${si * 35}ms both`,
                         }}
                       >
+                        {/* Session header */}
                         <button
                           onClick={() => setExpandedSessionId(expandedSessionId === session._id ? null : session._id)}
                           style={{
@@ -629,6 +650,8 @@ function AdminPanel({ token, onClose }) {
                             <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         </button>
+
+                        {/* Messages */}
                         {expandedSessionId === session._id && (
                           <div style={{
                             borderTop: "1px solid var(--border)", padding: "14px 16px",
@@ -668,6 +691,7 @@ function AdminPanel({ token, onClose }) {
         </div>
       </div>
 
+      {/* Toast */}
       {toast && (
         <div style={{
           position: "fixed", bottom: 24, left: "50%",
@@ -718,7 +742,7 @@ export default function App() {
 
   // ── Call Agent state ────────────────────────────────────
   const [callMode, setCallMode] = useState(false);
-  const [callStatus, setCallStatus] = useState("idle");
+  const [callStatus, setCallStatus] = useState("idle"); // idle | listening | thinking | speaking
 
   const chatEndRef = useRef(null);
   const fullReplyRef = useRef("");
@@ -1140,28 +1164,34 @@ export default function App() {
     setPlayingId(id);
     window.speechSynthesis.speak(utter);
   };
-
   // ── Call Agent ───────────────────────────────────────────
   const startCallListening = async () => {
     if (!callModeRef.current) return;
+
     setCallStatus("listening");
     speakingRef.current = false;
+
     try {
       const { stream, analyser } = await getSharedMicStream();
+
       const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       callRecognitionRef.current = mediaRecorder;
-      let chunks = [];
+      const chunks = [];
+
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.push(e.data);
       };
+
       const dataArray = new Float32Array(analyser.fftSize);
       const rmsHistory = [];
       const HISTORY_SIZE = 20;
       let adaptiveThreshold = 0.025;
       let speechDetected = false;
       let silenceStart = null;
+
       const SILENCE_DURATION = 2000;
       const MAX_DURATION = 8000;
+
       const silenceInterval = setInterval(() => {
         analyser.getFloatTimeDomainData(dataArray);
         let sum = 0;
@@ -1169,14 +1199,18 @@ export default function App() {
           sum += dataArray[i] * dataArray[i];
         }
         const rms = Math.sqrt(sum / dataArray.length);
+
         rmsHistory.push(rms);
         if (rmsHistory.length > HISTORY_SIZE) rmsHistory.shift();
+
         if (!speechDetected && rmsHistory.length >= 5) {
           const sorted = [...rmsHistory].sort((a, b) => a - b);
           const noiseFloor = sorted[Math.floor(sorted.length * 0.5)];
-          adaptiveThreshold = Math.max(0.015, noiseFloor * 3.0);
+          adaptiveThreshold = Math.max(0.025, noiseFloor * 3.0);
           adaptiveThresholdRef.current = adaptiveThreshold;
+          console.log("🎚️ Adaptive threshold:", adaptiveThreshold.toFixed(4), "Noise floor:", noiseFloor.toFixed(4));
         }
+
         if (rms > adaptiveThreshold) {
           speechDetected = true;
           silenceStart = null;
@@ -1189,28 +1223,38 @@ export default function App() {
           }
         }
       }, 100);
+
       const maxTimer = setTimeout(() => {
         clearInterval(silenceInterval);
         if (mediaRecorder.state === "recording") mediaRecorder.stop();
       }, MAX_DURATION);
+
       mediaRecorder.start();
+
       setTimeout(() => {
         if (mediaRecorder.state === "recording") mediaRecorder.stop();
       }, 5000);
+
       mediaRecorder.onstop = async () => {
         clearInterval(silenceInterval);
         clearTimeout(maxTimer);
+        callRecognitionRef.current = null;
+        if (!callModeRef.current) return;
+
         const blob = new Blob(chunks, { type: "audio/webm" });
         const lastRms = rmsHistory.length ? rmsHistory[rmsHistory.length - 1] : 0.05;
-        if (lastRms < 0.015) {
+
+        if (lastRms < 0.025) {
           console.log("❌ No real speech — low energy:", lastRms.toFixed(4));
           setCallStatus("listening");
           setTimeout(() => startCallListening(), 500);
           return;
         }
+
         const formData = new FormData();
         formData.append("audio", blob, "chunk.webm");
         formData.append("language", language.split("-")[0]);
+
         try {
           setCallStatus("thinking");
           const res = await fetch(`${API}/call/transcribe`, {
@@ -1218,28 +1262,35 @@ export default function App() {
             headers: { Authorization: `Bearer ${tokenRef.current}` },
             body: formData,
           });
+
           const data = await res.json();
           const transcript = data.transcript?.trim();
+
           if (!transcript) {
             setCallStatus("listening");
             setTimeout(() => startCallListening(), 500);
             return;
           }
+
           const isShortPhrase = transcript.split(" ").length <= 3;
           const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
-          if (isShortPhrase && isSameAsLast && lastRms < 0.020) {
+
+          if (isShortPhrase && isSameAsLast && lastRms < 0.030) {
             console.log("❌ Repeated noise ignored:", transcript, "RMS:", lastRms.toFixed(4));
             window._lastCallTranscript = "";
             setCallStatus("listening");
             setTimeout(() => startCallListening(), 500);
             return;
           }
+
           window._lastCallTranscript = transcript.toLowerCase();
           sendCallMessage(transcript);
         } catch (err) {
           console.error("Transcription error:", err);
-          setCallStatus("listening");
-          setTimeout(() => startCallListening(), 1000);
+          if (callModeRef.current) {
+            setCallStatus("listening");
+            setTimeout(() => startCallListening(), 1000);
+          }
         }
       };
     } catch (err) {
@@ -1251,13 +1302,17 @@ export default function App() {
   const sendCallMessage = async (text) => {
     if (!callModeRef.current) return;
     setCallStatus("thinking");
+
     const now = new Date();
     const userId = "u" + Date.now();
     const botId = "b" + Date.now();
     setMessages((prev) => [...prev, { role: "user", text, time: now, id: userId }]);
+
     const newBotMsg = { role: "bot", text: "", thinking: true, time: now, id: botId };
     setMessages((prev) => [...prev, newBotMsg]);
+
     fullReplyRef.current = "";
+
     try {
       const res = await fetch(`${API}/chat`, {
         method: "POST",
@@ -1267,8 +1322,10 @@ export default function App() {
         },
         body: JSON.stringify({ message: text }),
       });
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1302,7 +1359,7 @@ export default function App() {
                   return updated;
                 });
               }
-            } catch (e) { }
+            } catch (e) { /* ignore malformed SSE chunk */ }
           }
         }
       }
@@ -1321,48 +1378,79 @@ export default function App() {
 
   const speakCallReply = async (text) => {
     if (!callModeRef.current) return;
+
     const sessionId = ++activeBargeSessionId;
+
     setCallStatus("speaking");
     speakingRef.current = true;
     window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = language;
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
+
     let bargeInterval = null;
     let bargeAnalyser = null;
     let bargeSource = null;
+
     const cleanupBarge = () => {
-      if (bargeInterval) { clearInterval(bargeInterval); bargeInterval = null; }
-      if (bargeSource) { try { bargeSource.disconnect(); } catch {} bargeSource = null; }
+      if (bargeInterval) {
+        clearInterval(bargeInterval);
+        bargeInterval = null;
+      }
+      if (bargeSource) {
+        try { bargeSource.disconnect(); } catch { /* already disconnected */ }
+        bargeSource = null;
+      }
       bargeAnalyser = null;
     };
+
     const startBargeDetection = async () => {
       try {
         if (sessionId !== activeBargeSessionId) return;
+
         const { stream, audioContext } = await getSharedMicStream();
-        if (bargeSource) { try { bargeSource.disconnect(); } catch {} }
+
+        if (bargeSource) {
+          try { bargeSource.disconnect(); } catch { /* already disconnected */ }
+        }
+
         bargeAnalyser = audioContext.createAnalyser();
         bargeAnalyser.fftSize = 512;
         bargeSource = audioContext.createMediaStreamSource(stream);
         bargeSource.connect(bargeAnalyser);
+
         const bargeData = new Float32Array(bargeAnalyser.fftSize);
-        const currentAdaptiveThreshold = adaptiveThresholdRef?.current || 0.025;
-        const bargeThreshold = Math.max(0.035, currentAdaptiveThreshold * 2.2);
+        const currentAdaptiveThreshold = adaptiveThresholdRef.current || 0.025;
+        const bargeThreshold = Math.max(0.055, currentAdaptiveThreshold * 2.2);
+
         console.log("🎚️ Barge threshold:", bargeThreshold.toFixed(4), "| Session:", sessionId);
+
         bargeInterval = setInterval(() => {
-          if (sessionId !== activeBargeSessionId) { cleanupBarge(); return; }
+          if (sessionId !== activeBargeSessionId) {
+            cleanupBarge();
+            return;
+          }
+
           bargeAnalyser.getFloatTimeDomainData(bargeData);
           let sum = 0;
-          for (let i = 0; i < bargeData.length; i++) { sum += bargeData[i] * bargeData[i]; }
+          for (let i = 0; i < bargeData.length; i++) {
+            sum += bargeData[i] * bargeData[i];
+          }
           const rms = Math.sqrt(sum / bargeData.length);
+
           if (!rms || rms < 0.001) return;
+
           console.log("🔍 Barge RMS:", rms.toFixed(4), "| Session:", sessionId);
+
           if (rms > bargeThreshold) {
             console.log("⚡ Barge-in! RMS:", rms.toFixed(4), "| Session:", sessionId);
+
             activeBargeSessionId++;
             cleanupBarge();
             window.speechSynthesis.cancel();
+
             speakingRef.current = false;
             setCallStatus("listening");
             setTimeout(() => startCallListening(), 300);
@@ -1373,20 +1461,34 @@ export default function App() {
         cleanupBarge();
       }
     };
-    utterance.onstart = () => { setTimeout(() => startBargeDetection(), 100); };
+
+    utterance.onstart = () => {
+      startBargeDetection();
+    };
+
     utterance.onend = () => {
       if (sessionId !== activeBargeSessionId) return;
+
       cleanupBarge();
       speakingRef.current = false;
-      if (callModeRef.current) { setCallStatus("listening"); setTimeout(() => startCallListening(), 500); }
+      if (callModeRef.current) {
+        setCallStatus("listening");
+        setTimeout(() => startCallListening(), 500);
+      }
     };
+
     utterance.onerror = (e) => {
-      console.error("TTS error:", e);
       if (sessionId !== activeBargeSessionId) return;
+
+      console.error("TTS error:", e);
       cleanupBarge();
       speakingRef.current = false;
-      if (callModeRef.current) { setCallStatus("listening"); setTimeout(() => startCallListening(), 500); }
+      if (callModeRef.current) {
+        setCallStatus("listening");
+        setTimeout(() => startCallListening(), 500);
+      }
     };
+
     window.speechSynthesis.speak(utterance);
   };
 
@@ -1397,28 +1499,26 @@ export default function App() {
     stopListening();
     window.speechSynthesis.cancel();
     window._lastCallTranscript = "";
-    if (window._audioWatchdog) clearTimeout(window._audioWatchdog);
-    window._audioWatchdog = setTimeout(() => {
-      if (callModeRef.current) { console.log("🔄 Audio watchdog reset"); cleanupSharedAudio(); }
-    }, 20 * 60 * 1000);
     setTimeout(() => startCallListening(), 400);
   };
 
   const endCall = () => {
     activeBargeSessionId++;
+
     callModeRef.current = false;
     speakingRef.current = false;
     setCallMode(false);
     setCallStatus("idle");
     window._lastCallTranscript = "";
+
     if (callRecognitionRef.current?.state === "recording") {
-      try { callRecognitionRef.current.stop(); } catch {}
+      try { callRecognitionRef.current.stop(); } catch { /* already stopped */ }
     }
     callRecognitionRef.current = null;
+
     cleanupSharedAudio();
     window.speechSynthesis.cancel();
   };
-
   // ── Voice ───────────────────────────────────────────────
   const startListening = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1458,6 +1558,7 @@ export default function App() {
     return groups;
   }, {});
 
+  // ── Route guards ────────────────────────────────────────
   if (window.location.pathname.startsWith("/shared/")) {
     return <SharedChatView />;
   }
@@ -1520,7 +1621,10 @@ export default function App() {
   return (
     <div className="chat-app">
 
-      {showAdmin && <AdminPanel token={token} onClose={() => setShowAdmin(false)} />}
+      {/* Admin Panel */}
+      {showAdmin && (
+        <AdminPanel token={token} onClose={() => setShowAdmin(false)} />
+      )}
 
       {drawerOpen && <div className="drawer-overlay" onClick={() => setDrawerOpen(false)} />}
 
@@ -1633,6 +1737,7 @@ export default function App() {
           <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
+
           <div className="lang-dropdown" ref={langRef}>
             <button className="lang-trigger" onClick={() => setLangOpen((o) => !o)}>
               <span className="lang-flag">{currentLang?.flag}</span>
@@ -1658,6 +1763,7 @@ export default function App() {
               </div>
             )}
           </div>
+          {/* Call Agent button */}
           <button className="icon-btn" onClick={startCall} title="Start Voice Call"
             style={{ color: "#22c55e", borderColor: "rgba(34,197,94,0.4)" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -1665,6 +1771,7 @@ export default function App() {
                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
+          {/* Admin button — only for admins */}
           {user?.isAdmin && (
             <button className="icon-btn" onClick={() => setShowAdmin(true)} title="Admin Panel"
               style={{ color: "var(--accent3)", borderColor: "var(--accent)" }}>
@@ -1675,11 +1782,13 @@ export default function App() {
               </svg>
             </button>
           )}
+
           <button className="icon-btn" onClick={startNewSession} title="New chat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
+
           <button className="icon-btn" onClick={handleClearChat} title="Clear chat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -1688,6 +1797,7 @@ export default function App() {
               <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
+
           <div className="user-chip">
             <div className="user-avatar">{user?.name?.[0]?.toUpperCase()}</div>
             <span className="user-name">{user?.name}</span>
@@ -1871,7 +1981,6 @@ export default function App() {
           <div ref={chatEndRef} />
         </div>
       </main>
-
       {/* Call Agent Overlay */}
       {callMode && (
         <div style={{
@@ -1880,39 +1989,62 @@ export default function App() {
           display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", gap: 24,
         }}>
+          {/* Animated ring */}
           <div style={{ position: "relative", width: 120, height: 120 }}>
+            {/* Outer pulse rings */}
             <div style={{
               position: "absolute", inset: -20, borderRadius: "50%",
-              border: `2px solid ${callStatus === "listening" ? "rgba(34,197,94,0.4)" : callStatus === "speaking" ? "rgba(59,130,246,0.4)" : "rgba(251,191,36,0.4)"}`,
+              border: `2px solid ${callStatus === "listening" ? "rgba(34,197,94,0.4)" :
+                callStatus === "speaking" ? "rgba(59,130,246,0.4)" :
+                  "rgba(251,191,36,0.4)"
+                }`,
               animation: "call-ring-outer 1.8s ease-out infinite",
             }} />
             <div style={{
               position: "absolute", inset: -8, borderRadius: "50%",
-              border: `2px solid ${callStatus === "listening" ? "rgba(34,197,94,0.6)" : callStatus === "speaking" ? "rgba(59,130,246,0.6)" : "rgba(251,191,36,0.6)"}`,
+              border: `2px solid ${callStatus === "listening" ? "rgba(34,197,94,0.6)" :
+                callStatus === "speaking" ? "rgba(59,130,246,0.6)" :
+                  "rgba(251,191,36,0.6)"
+                }`,
               animation: "call-ring-inner 1.8s ease-out infinite 0.3s",
             }} />
+            {/* Center circle */}
             <div style={{
               width: 120, height: 120, borderRadius: "50%",
-              background: callStatus === "listening" ? "rgba(34,197,94,0.15)" : callStatus === "speaking" ? "rgba(59,130,246,0.15)" : "rgba(251,191,36,0.15)",
-              border: `2px solid ${callStatus === "listening" ? "#22c55e" : callStatus === "speaking" ? "#3b82f6" : "#fbbf24"}`,
+              background: callStatus === "listening" ? "rgba(34,197,94,0.15)" :
+                callStatus === "speaking" ? "rgba(59,130,246,0.15)" :
+                  "rgba(251,191,36,0.15)",
+              border: `2px solid ${callStatus === "listening" ? "#22c55e" :
+                callStatus === "speaking" ? "#3b82f6" :
+                  "#fbbf24"
+                }`,
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "all 0.4s ease",
             }}>
               <NeuralIcon size={44} />
             </div>
           </div>
+
+          {/* Status indicator */}
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: "1.1rem", fontWeight: 600, color: "#fff", marginBottom: 6 }}>
+            <div style={{
+              fontSize: "1.1rem", fontWeight: 600, color: "#fff", marginBottom: 6,
+            }}>
               AI Voice Agent
             </div>
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               fontSize: "0.9rem", fontWeight: 500,
-              color: callStatus === "listening" ? "#22c55e" : callStatus === "speaking" ? "#3b82f6" : "#fbbf24",
+              color: callStatus === "listening" ? "#22c55e" :
+                callStatus === "speaking" ? "#3b82f6" :
+                  "#fbbf24",
             }}>
+              {/* Animated dot */}
               <div style={{
                 width: 8, height: 8, borderRadius: "50%",
-                background: callStatus === "listening" ? "#22c55e" : callStatus === "speaking" ? "#3b82f6" : "#fbbf24",
+                background: callStatus === "listening" ? "#22c55e" :
+                  callStatus === "speaking" ? "#3b82f6" :
+                    "#fbbf24",
                 animation: "call-dot-pulse 1s ease-in-out infinite",
               }} />
               {callStatus === "listening" && "🎙️ Listening..."}
@@ -1920,6 +2052,8 @@ export default function App() {
               {callStatus === "speaking" && "🔊 Speaking..."}
             </div>
           </div>
+
+          {/* Waveform bars — only when speaking or listening */}
           {(callStatus === "listening" || callStatus === "speaking") && (
             <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32 }}>
               {[1, 1.6, 1.2, 1.8, 1, 1.4, 1.7, 1.1, 1.5, 1].map((h, i) => (
@@ -1934,6 +2068,8 @@ export default function App() {
               ))}
             </div>
           )}
+
+          {/* End call button */}
           <button onClick={endCall} style={{
             marginTop: 8, width: 60, height: 60, borderRadius: "50%",
             background: "#ef4444", border: "none", cursor: "pointer",
@@ -1944,18 +2080,19 @@ export default function App() {
             onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.1)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
           >
+            {/* Phone hang-up icon */}
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7 2 2 0 012 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.42 19.42 0 013.43 9.19 19.79 19.79 0 01.36 .54 2 2 0 012.35.54h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.33 8.45a16 16 0 004.35 4.86z"
                 fill="white" />
               <line x1="1" y1="1" x2="23" y2="23" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
           </button>
+
           <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.78rem" }}>
             Tap red button to end call
           </p>
         </div>
       )}
-
       {listening && (
         <div className="voice-overlay">
           <div className="voice-modal">
@@ -2008,20 +2145,28 @@ export default function App() {
           {listening ? "🔴 Recording — tap mic or Stop to cancel" : "Hey there! How can I help you?"}
         </p>
       </div>
-
       {/* Floating Call Button */}
       {!callMode && (
-        <button onClick={startCall} title="Start Voice Call" style={{
-          position: "fixed", bottom: 28, left: 24, zIndex: 900,
-          width: 56, height: 56, borderRadius: "50%",
-          background: "linear-gradient(135deg, #22c55e, #16a34a)",
-          border: "none", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 4px 20px rgba(34,197,94,0.5)",
-          transition: "transform 0.2s, box-shadow 0.2s",
-        }}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.12)"; e.currentTarget.style.boxShadow = "0 6px 28px rgba(34,197,94,0.7)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(34,197,94,0.5)"; }}
+        <button
+          onClick={startCall}
+          title="Start Voice Call"
+          style={{
+            position: "fixed", bottom: 28, left: 24, zIndex: 900,
+            width: 56, height: 56, borderRadius: "50%",
+            background: "linear-gradient(135deg, #22c55e, #16a34a)",
+            border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 20px rgba(34,197,94,0.5)",
+            transition: "transform 0.2s, box-shadow 0.2s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "scale(1.12)";
+            e.currentTarget.style.boxShadow = "0 6px 28px rgba(34,197,94,0.7)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.boxShadow = "0 4px 20px rgba(34,197,94,0.5)";
+          }}
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
             <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.1 2.18 2 2 0 012.08.1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.11 7.91a16 16 0 006 6l1.17-1.17a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
@@ -2035,6 +2180,8 @@ export default function App() {
           }} />
         </button>
       )}
+
+
 
       {/* Toast */}
       {toast && (
