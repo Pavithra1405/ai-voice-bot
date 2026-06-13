@@ -7,13 +7,21 @@ const ChatSession = require("../models/ChatSession");
 // Get all sessions for user (title + id only)
 router.get("/", auth, async (req, res) => {
   try {
-    const sessions = await ChatSession.find({ userId: req.user._id })
-      .sort({ updatedAt: -1 })
-      .select("_id title updatedAt isShared shareId")
+    const sessions = await ChatSession.find({
+        userId: req.user._id
+      })
+      .sort({
+        updatedAt: -1
+      })
+
       .limit(50);
-    res.json({ sessions });
+    res.json({
+      sessions
+    });
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch sessions" });
+    res.status(500).json({
+      error: "Failed to fetch sessions"
+    });
   }
 });
 
@@ -24,44 +32,69 @@ router.get("/:id", auth, async (req, res) => {
       _id: req.params.id,
       userId: req.user._id,
     });
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    res.json({ session });
+    if (!session) return res.status(404).json({
+      error: "Session not found"
+    });
+    res.json({
+      session
+    });
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch session" });
+    res.status(500).json({
+      error: "Failed to fetch session"
+    });
   }
 });
 
 // Create new session
 router.post("/", auth, async (req, res) => {
   try {
-    const { title, messages } = req.body;
+    const {
+      title,
+      messages
+    } = req.body;
     const session = await ChatSession.create({
       userId: req.user._id,
       title: title || "New Chat",
       messages: messages || [],
     });
-    res.json({ session });
+    res.json({
+      session
+    });
   } catch (err) {
-    res.status(500).json({ error: "Failed to create session" });
+    res.status(500).json({
+      error: "Failed to create session"
+    });
   }
 });
 
 // Update session (add messages / update title)
 router.patch("/:id", auth, async (req, res) => {
   try {
-    const { messages, title } = req.body;
+    const {
+      messages,
+      title
+    } = req.body;
     const update = {};
     if (messages) update.messages = messages;
     if (title) update.title = title;
-    const session = await ChatSession.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user._id },
-      update,
-      { returnDocument: "after" }
+    const session = await ChatSession.findOneAndUpdate({
+        _id: req.params.id,
+        userId: req.user._id
+      },
+      update, {
+        returnDocument: "after"
+      }
     );
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    res.json({ session });
+    if (!session) return res.status(404).json({
+      error: "Session not found"
+    });
+    res.json({
+      session
+    });
   } catch (err) {
-    res.status(500).json({ error: "Failed to update session" });
+    res.status(500).json({
+      error: "Failed to update session"
+    });
   }
 });
 
@@ -72,9 +105,13 @@ router.delete("/:id", auth, async (req, res) => {
       _id: req.params.id,
       userId: req.user._id,
     });
-    res.json({ success: true });
+    res.json({
+      success: true
+    });
   } catch (err) {
-    res.status(500).json({ error: "Failed to delete session" });
+    res.status(500).json({
+      error: "Failed to delete session"
+    });
   }
 });
 
@@ -85,7 +122,9 @@ router.patch("/:id/share", auth, async (req, res) => {
       _id: req.params.id,
       userId: req.user._id,
     });
-    if (!session) return res.status(404).json({ message: "Session not found" });
+    if (!session) return res.status(404).json({
+      message: "Session not found"
+    });
 
     session.isShared = !session.isShared;
     await session.save();
@@ -95,7 +134,9 @@ router.patch("/:id/share", auth, async (req, res) => {
       shareId: session.shareId,
     });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      message: "Server error"
+    });
   }
 });
 
@@ -106,10 +147,14 @@ router.get("/shared/:shareId", async (req, res) => {
       shareId: req.params.shareId,
       isShared: true,
     });
-    if (!session) return res.status(404).json({ message: "Link invalid or sharing disabled" });
+    if (!session) return res.status(404).json({
+      message: "Link invalid or sharing disabled"
+    });
     res.json(session);
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      message: "Server error"
+    });
   }
 });
 

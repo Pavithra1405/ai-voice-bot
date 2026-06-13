@@ -12,58 +12,10 @@ const THINKING_STAGES = [
 const EMPTY_FORM = { name: "", email: "", password: "" };
 
 // ── Shared Audio Resources (module-level) ──
-let sharedMicStream = null;
+
 let sharedAudioContext = null;
 let sharedAnalyser = null;
 let sharedSource = null;
-
-async function getSharedMicStream() {
-  if (!sharedMicStream) {
-    sharedMicStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 16000,
-      },
-    });
-
-    if (!sharedAudioContext) {
-      sharedAudioContext = new AudioContext();
-    }
-
-    if (sharedAudioContext.state === "suspended") {
-      await sharedAudioContext.resume();
-    }
-
-    sharedSource = sharedAudioContext.createMediaStreamSource(sharedMicStream);
-    sharedAnalyser = sharedAudioContext.createAnalyser();
-    sharedAnalyser.fftSize = 2048;
-    sharedSource.connect(sharedAnalyser);
-  }
-
-  if (sharedAudioContext.state === "suspended") {
-    await sharedAudioContext.resume();
-  }
-
-  return { stream: sharedMicStream, audioContext: sharedAudioContext, analyser: sharedAnalyser };
-}
-
-function cleanupSharedAudio() {
-  if (sharedSource) {
-    try { sharedSource.disconnect(); } catch { /* already disconnected */ }
-    sharedSource = null;
-  }
-  if (sharedMicStream) {
-    sharedMicStream.getTracks().forEach((t) => t.stop());
-    sharedMicStream = null;
-  }
-  if (sharedAudioContext) {
-    sharedAudioContext.close();
-    sharedAudioContext = null;
-  }
-  sharedAnalyser = null;
-}
 
 function NeuralIcon({ size = 22, className = "" }) {
   return (
@@ -1122,23 +1074,38 @@ export default function App() {
     setCallStatus("listening");
 
     try {
-      const { stream, analyser } = await getSharedMicStream();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      if (!callModeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+
       const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       callRecognitionRef.current = mediaRecorder;
       const chunks = [];
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
       const dataArray = new Float32Array(analyser.fftSize);
-      const rmsHistory = [];
-      const HISTORY_SIZE = 20;
-      let adaptiveThreshold = 0.025;
+
       let speechDetected = false;
       let silenceStart = null;
+      let adaptiveThreshold = 0.025;
+      const rmsHistory = [];
       const SILENCE_DURATION = 2000;
       const MAX_DURATION = 8000;
+
+      const maxTimer = setTimeout(() => {
+        clearInterval(silenceInterval);
+        if (mediaRecorder.state === "recording") mediaRecorder.stop();
+      }, MAX_DURATION);
 
       const silenceInterval = setInterval(() => {
         analyser.getFloatTimeDomainData(dataArray);
@@ -1147,8 +1114,9 @@ export default function App() {
         const rms = Math.sqrt(sum / dataArray.length);
 
         rmsHistory.push(rms);
-        if (rmsHistory.length > HISTORY_SIZE) rmsHistory.shift();
+        if (rmsHistory.length > 20) rmsHistory.shift();
 
+        // Adapt threshold from quiet periods
         if (!speechDetected && rmsHistory.length >= 5) {
           const sorted = [...rmsHistory].sort((a, b) => a - b);
           const noiseFloor = sorted[Math.floor(sorted.length * 0.5)];
@@ -1168,69 +1136,194 @@ export default function App() {
         }
       }, 100);
 
-      const maxTimer = setTimeout(() => {
-        clearInterval(silenceInterval);
-        if (mediaRecorder.state === "recording") mediaRecorder.stop();
-      }, MAX_DURATION);
-
-      mediaRecorder.start();
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
 
       mediaRecorder.onstop = async () => {
         clearInterval(silenceInterval);
         clearTimeout(maxTimer);
+        audioContext.close();
+        stream.getTracks().forEach(t => t.stop());
         callRecognitionRef.current = null;
         if (!callModeRef.current) return;
 
         const blob = new Blob(chunks, { type: "audio/webm" });
-        const lastRms = rmsHistory.length ? rmsHistory[rmsHistory.length - 1] : 0;
 
-        if (lastRms < 0.025) {
-          setCallStatus("listening");
-          setTimeout(() => startCallListening(), 500);
+        // Skip if no real speech detected
+        if (!speechDetected || blob.size < 3000) {
+          console.log("❌ No speech detected, listening again");
+          setTimeout(() => startCallListening(), 300);
           return;
         }
 
-        const formData = new FormData();
-        formData.append("audio", blob, "chunk.webm");
-        formData.append("language", language.split("-")[0]);
-
         try {
           setCallStatus("thinking");
+          const formData = new FormData();
+          formData.append("audio", blob, "audio.webm");
+          formData.append("language", language.split("-")[0]);
+
           const res = await fetch(`${API}/call/transcribe`, {
             method: "POST",
             headers: { Authorization: `Bearer ${tokenRef.current}` },
             body: formData,
           });
+
           const data = await res.json();
           const transcript = data.transcript?.trim();
 
-          if (!transcript) {
-            setCallStatus("listening");
-            setTimeout(() => startCallListening(), 500);
+          if (!data.valid || !transcript) {
+            console.log("❌ Invalid transcript, listening again");
+            setTimeout(() => startCallListening(), 300);
             return;
           }
 
-          const isShortPhrase = transcript.split(" ").length <= 3;
+          // Repeat detection
+          const isShortPhrase = transcript.split(" ").length <= 2;
           const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
-          if (isShortPhrase && isSameAsLast && lastRms < 0.030) {
+          if (isShortPhrase && isSameAsLast) {
+            console.log("❌ Repeated phrase ignored:", transcript);
             window._lastCallTranscript = "";
-            setCallStatus("listening");
-            setTimeout(() => startCallListening(), 500);
+            setTimeout(() => startCallListening(), 300);
             return;
           }
 
+          console.log("✅ Transcript:", transcript);
           window._lastCallTranscript = transcript.toLowerCase();
           sendCallMessage(transcript);
-        } catch {
-          if (callModeRef.current) {
-            setCallStatus("listening");
-            setTimeout(() => startCallListening(), 1000);
-          }
+
+        } catch (err) {
+          console.error("Transcription error:", err);
+          if (callModeRef.current) setTimeout(() => startCallListening(), 500);
         }
       };
-    } catch {
-      setCallStatus("idle");
+
+      mediaRecorder.start();
+
+    } catch (err) {
+      console.error("Mic error:", err);
+      if (callModeRef.current) setTimeout(() => startCallListening(), 1000);
     }
+  };
+
+  const sendCallMessage = async (text) => {
+    if (!callModeRef.current) return;
+    setCallStatus("thinking");
+
+    const now = new Date();
+    const userId = "u" + Date.now();
+    const botId = "b" + Date.now();
+    setMessages((prev) => [...prev, { role: "user", text, time: now, id: userId }]);
+    setMessages((prev) => [...prev, { role: "bot", text: "", thinking: true, time: now, id: botId }]);
+    fullReplyRef.current = "";
+
+    try {
+      const res = await fetch(`${API}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenRef.current}` },
+        body: JSON.stringify({ message: text }),
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter((l) => l.trim());
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const jsonStr = line.replace("data: ", "").trim();
+            if (jsonStr === "[DONE]") {
+              setMessages((prev) => {
+                const updated = prev.map((m) =>
+                  m.id === botId ? { ...m, text: fullReplyRef.current, thinking: false } : m
+                );
+                saveCurrentSession(updated);
+                return updated;
+              });
+              if (callModeRef.current) speakCallReply(fullReplyRef.current);
+              break;
+            }
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const token_text = parsed.token || "";
+              if (token_text) {
+                fullReplyRef.current += token_text;
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    text: fullReplyRef.current, thinking: false,
+                  };
+                  return updated;
+                });
+              }
+            } catch { }
+          }
+        }
+      }
+    } catch (err) {
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1], text: "Error reaching server.", thinking: false,
+        };
+        return updated;
+      });
+      if (callModeRef.current) setTimeout(() => startCallListening(), 500);
+    }
+  };
+
+  const speakCallReply = (text) => {
+    if (!callModeRef.current) return;
+    setCallStatus("speaking");
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language;
+    utterance.rate = 1.0;
+
+    utterance.onend = () => {
+      if (!callModeRef.current) return;
+      setCallStatus("listening");
+      setTimeout(() => startCallListening(), 500);
+    };
+
+    utterance.onerror = () => {
+      if (!callModeRef.current) return;
+      setCallStatus("listening");
+      setTimeout(() => startCallListening(), 500);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startCall = () => {
+    callModeRef.current = true;
+    setCallMode(true);
+    setCallStatus("listening");
+    stopListening();
+    window.speechSynthesis.cancel();
+    window._lastCallTranscript = "";
+    setTimeout(() => startCallListening(), 400);
+  };
+
+  const endCall = () => {
+    callModeRef.current = false;
+    setCallMode(false);
+    setCallStatus("idle");
+    window._lastCallTranscript = "";
+    if (callRecognitionRef.current) {
+      try {
+        if (callRecognitionRef.current.state === "recording") {
+          callRecognitionRef.current.stop();
+        }
+      } catch { }
+      callRecognitionRef.current = null;
+    }
+    window.speechSynthesis.cancel();
   };
 
   const sendCallMessage = async (text) => {
