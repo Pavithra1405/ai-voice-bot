@@ -11,61 +11,6 @@ const THINKING_STAGES = [
 
 const EMPTY_FORM = { name: "", email: "", password: "" };
 
-// ── Shared Audio Resources (module-level) ──
-let sharedMicStream = null;
-let sharedAudioContext = null;
-let sharedAnalyser = null;
-let sharedSource = null;
-let activeBargeSessionId = 0;
-
-async function getSharedMicStream() {
-  if (!sharedMicStream) {
-    sharedMicStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 16000,
-      },
-    });
-
-    if (!sharedAudioContext) {
-      sharedAudioContext = new AudioContext();
-    }
-
-    if (sharedAudioContext.state === "suspended") {
-      await sharedAudioContext.resume();
-    }
-
-    sharedSource = sharedAudioContext.createMediaStreamSource(sharedMicStream);
-    sharedAnalyser = sharedAudioContext.createAnalyser();
-    sharedAnalyser.fftSize = 2048;
-    sharedSource.connect(sharedAnalyser);
-  }
-
-  if (sharedAudioContext.state === "suspended") {
-    await sharedAudioContext.resume();
-  }
-
-  return { stream: sharedMicStream, audioContext: sharedAudioContext, analyser: sharedAnalyser };
-}
-
-function cleanupSharedAudio() {
-  if (sharedSource) {
-    try { sharedSource.disconnect(); } catch { /* already disconnected */ }
-    sharedSource = null;
-  }
-  if (sharedMicStream) {
-    sharedMicStream.getTracks().forEach((t) => t.stop());
-    sharedMicStream = null;
-  }
-  if (sharedAudioContext) {
-    sharedAudioContext.close();
-    sharedAudioContext = null;
-  }
-  sharedAnalyser = null;
-}
-
 function NeuralIcon({ size = 22, className = "" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none"
@@ -760,7 +705,7 @@ export default function App() {
   const callModeRef = useRef(false);
   const speakingRef = useRef(false);
   const callRecognitionRef = useRef(null);
-  const adaptiveThresholdRef = useRef(0.025);
+  const bargeInStreamRef = useRef(null);
 
   useEffect(() => { tokenRef.current = token; }, [token]);
   useEffect(() => { currentSessionIdRef.current = currentSessionId; }, [currentSessionId]);
@@ -1165,140 +1110,141 @@ export default function App() {
     window.speechSynthesis.speak(utter);
   };
   // ── Call Agent ───────────────────────────────────────────
-  const startCallListening = async () => {
+  const startCallListening = () => {
     if (!callModeRef.current) return;
-
     setCallStatus("listening");
-    speakingRef.current = false;
 
-    try {
-      const { stream, analyser } = await getSharedMicStream();
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        if (!callModeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      callRecognitionRef.current = mediaRecorder;
-      const chunks = [];
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        callRecognitionRef.current = mediaRecorder;
+        const chunks = [];
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
+        // ── Silence detection via AnalyserNode ──
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
 
-      const dataArray = new Float32Array(analyser.fftSize);
-      const rmsHistory = [];
-      const HISTORY_SIZE = 20;
-      let adaptiveThreshold = 0.025;
-      let speechDetected = false;
-      let silenceStart = null;
+        const dataArray = new Float32Array(analyser.fftSize);
+        let silenceStart = null;
+        let speechDetected = false;
+        const SILENCE_THRESHOLD = 0.015;   // same as your RMS threshold
+        const SILENCE_DURATION = 2000;     // stop after 2s of silence
+        const MAX_DURATION = 8000;      // hard cap 8s
 
-      const SILENCE_DURATION = 2000;
-      const MAX_DURATION = 8000;
+        const maxTimer = setTimeout(() => {
+          if (mediaRecorder.state === "recording") mediaRecorder.stop();
+        }, MAX_DURATION);
 
-      const silenceInterval = setInterval(() => {
-        analyser.getFloatTimeDomainData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i] * dataArray[i];
-        }
-        const rms = Math.sqrt(sum / dataArray.length);
+        const silenceInterval = setInterval(() => {
+          analyser.getFloatTimeDomainData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+          const rms = Math.sqrt(sum / dataArray.length);
 
-        rmsHistory.push(rms);
-        if (rmsHistory.length > HISTORY_SIZE) rmsHistory.shift();
-
-        if (!speechDetected && rmsHistory.length >= 5) {
-          const sorted = [...rmsHistory].sort((a, b) => a - b);
-          const noiseFloor = sorted[Math.floor(sorted.length * 0.5)];
-          adaptiveThreshold = Math.max(0.025, noiseFloor * 3.0);
-          adaptiveThresholdRef.current = adaptiveThreshold;
-          console.log("🎚️ Adaptive threshold:", adaptiveThreshold.toFixed(4), "Noise floor:", noiseFloor.toFixed(4));
-        }
-
-        if (rms > adaptiveThreshold) {
-          speechDetected = true;
-          silenceStart = null;
-        } else if (speechDetected) {
-          if (!silenceStart) silenceStart = Date.now();
-          if (Date.now() - silenceStart > SILENCE_DURATION) {
-            clearInterval(silenceInterval);
-            clearTimeout(maxTimer);
-            if (mediaRecorder.state === "recording") mediaRecorder.stop();
+          if (rms > SILENCE_THRESHOLD) {
+            speechDetected = true;
+            silenceStart = null; // reset silence timer on speech
+          } else if (speechDetected) {
+            // Only count silence AFTER speech has started
+            if (!silenceStart) silenceStart = Date.now();
+            if (Date.now() - silenceStart > SILENCE_DURATION) {
+              clearInterval(silenceInterval);
+              clearTimeout(maxTimer);
+              if (mediaRecorder.state === "recording") mediaRecorder.stop();
+            }
           }
-        }
-      }, 100);
+        }, 100);
 
-      const maxTimer = setTimeout(() => {
-        clearInterval(silenceInterval);
-        if (mediaRecorder.state === "recording") mediaRecorder.stop();
-      }, MAX_DURATION);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
 
-      mediaRecorder.start();
+        mediaRecorder.onstop = async () => {
+          clearInterval(silenceInterval);
+          clearTimeout(maxTimer);
+          audioContext.close();
+          stream.getTracks().forEach(t => t.stop());
+          callRecognitionRef.current = null;
+          if (!callModeRef.current) return;
 
-      setTimeout(() => {
-        if (mediaRecorder.state === "recording") mediaRecorder.stop();
-      }, 5000);
+          const blob = new Blob(chunks, { type: "audio/webm" });
 
-      mediaRecorder.onstop = async () => {
-        clearInterval(silenceInterval);
-        clearTimeout(maxTimer);
-        callRecognitionRef.current = null;
-        if (!callModeRef.current) return;
-
-        const blob = new Blob(chunks, { type: "audio/webm" });
-        const lastRms = rmsHistory.length ? rmsHistory[rmsHistory.length - 1] : 0.05;
-
-        if (lastRms < 0.025) {
-          console.log("❌ No real speech — low energy:", lastRms.toFixed(4));
-          setCallStatus("listening");
-          setTimeout(() => startCallListening(), 500);
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append("audio", blob, "chunk.webm");
-        formData.append("language", language.split("-")[0]);
-
-        try {
-          setCallStatus("thinking");
-          const res = await fetch(`${API}/call/transcribe`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${tokenRef.current}` },
-            body: formData,
-          });
-
-          const data = await res.json();
-          const transcript = data.transcript?.trim();
-
-          if (!transcript) {
-            setCallStatus("listening");
-            setTimeout(() => startCallListening(), 500);
+          if (blob.size < 4000) {
+            if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
             return;
           }
 
-          const isShortPhrase = transcript.split(" ").length <= 3;
-          const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
+          // ── RMS energy check (same as before) ──
+          try {
+            const arrayBuffer = await blob.arrayBuffer();
+            const ac = new AudioContext();
+            const audioBuffer = await ac.decodeAudioData(arrayBuffer);
+            const channelData = audioBuffer.getChannelData(0);
+            let sum = 0;
+            for (let i = 0; i < channelData.length; i++) sum += channelData[i] * channelData[i];
+            const rms = Math.sqrt(sum / channelData.length);
+            console.log("🎙️ Audio RMS energy:", rms);
 
-          if (isShortPhrase && isSameAsLast && lastRms < 0.030) {
-            console.log("❌ Repeated noise ignored:", transcript, "RMS:", lastRms.toFixed(4));
-            window._lastCallTranscript = "";
-            setCallStatus("listening");
-            setTimeout(() => startCallListening(), 500);
-            return;
+            if (rms < 0.01) {
+              console.log("❌ No real speech — low energy:", rms);
+              if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
+              return;
+            }
+            console.log("✅ Real speech detected — energy:", rms);
+          } catch (e) {
+            console.log("⚠️ Energy check failed, continuing:", e.message);
           }
 
-          window._lastCallTranscript = transcript.toLowerCase();
-          sendCallMessage(transcript);
-        } catch (err) {
-          console.error("Transcription error:", err);
-          if (callModeRef.current) {
-            setCallStatus("listening");
-            setTimeout(() => startCallListening(), 1000);
+          // ── Transcribe ──
+          try {
+            setCallStatus("thinking");
+            const formData = new FormData();
+            formData.append("audio", blob, "audio.webm");
+            formData.append("language", language.split("-")[0]);
+
+            const res = await fetch(`${API}/call/transcribe`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${tokenRef.current}` },
+              body: formData,
+            });
+
+            const data = await res.json();
+            const transcript = data.transcript?.trim();
+
+            if (data.valid && transcript && callModeRef.current) {
+              const isShortPhrase = transcript.split(" ").length <= 3;
+              const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
+
+              if (isShortPhrase && isSameAsLast) {
+                console.log("❌ Repeated noise ignored:", transcript);
+                window._lastCallTranscript = "";
+                if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
+              } else {
+                window._lastCallTranscript = transcript.toLowerCase();
+                sendCallMessage(transcript);
+              }
+            } else {
+              window._lastCallTranscript = "";
+              if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
+            }
+          } catch (err) {
+            console.error("Transcription error:", err);
+            if (callModeRef.current) setTimeout(() => startCallListening(), 300);
           }
-        }
-      };
-    } catch (err) {
-      console.error("Call listening error:", err);
-      setCallStatus("idle");
-    }
+        };
+
+        mediaRecorder.start();
+      })
+      .catch((err) => {
+        console.error("Mic error:", err);
+        if (callModeRef.current) setTimeout(() => startCallListening(), 1000);
+      });
   };
-
   const sendCallMessage = async (text) => {
     if (!callModeRef.current) return;
     setCallStatus("thinking");
@@ -1335,6 +1281,7 @@ export default function App() {
           if (line.startsWith("data: ")) {
             const jsonStr = line.replace("data: ", "").trim();
             if (jsonStr === "[DONE]") {
+              // Update message in UI
               setMessages((prev) => {
                 const updated = prev.map((m) =>
                   m.id === botId ? { ...m, text: fullReplyRef.current, thinking: false } : m
@@ -1342,7 +1289,8 @@ export default function App() {
                 saveCurrentSession(updated);
                 return updated;
               });
-              if (callModeRef.current) speakCallReply(fullReplyRef.current);
+              // Speak the reply
+              if (callModeRef.current) speakCallReply(fullReplyRef.current, botId);
               break;
             }
             try {
@@ -1359,7 +1307,7 @@ export default function App() {
                   return updated;
                 });
               }
-            } catch (e) { /* ignore malformed SSE chunk */ }
+            } catch (e) { }
           }
         }
       }
@@ -1376,143 +1324,105 @@ export default function App() {
     }
   };
 
-  const speakCallReply = async (text) => {
+  const speakCallReply = (text) => {
     if (!callModeRef.current) return;
-
-    const sessionId = ++activeBargeSessionId;
-
-    setCallStatus("speaking");
-    speakingRef.current = true;
     window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = language;
+    utter.rate = 1;
+    speakingRef.current = true;
+    setCallStatus("speaking");
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = language;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
+    // ── Barge-in: listen in background while AI speaks ──
+    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      bargeInStreamRef.current = stream;
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const dataArray = new Float32Array(analyser.fftSize);
 
-    let bargeInterval = null;
-    let bargeAnalyser = null;
-    let bargeSource = null;
-
-    const cleanupBarge = () => {
-      if (bargeInterval) {
-        clearInterval(bargeInterval);
-        bargeInterval = null;
-      }
-      if (bargeSource) {
-        try { bargeSource.disconnect(); } catch { /* already disconnected */ }
-        bargeSource = null;
-      }
-      bargeAnalyser = null;
-    };
-
-    const startBargeDetection = async () => {
-      try {
-        if (sessionId !== activeBargeSessionId) return;
-
-        const { stream, audioContext } = await getSharedMicStream();
-
-        if (bargeSource) {
-          try { bargeSource.disconnect(); } catch { /* already disconnected */ }
+      const checkBargeIn = setInterval(() => {
+        if (!speakingRef.current) {
+          clearInterval(checkBargeIn);
+          audioContext.close();
+          stream.getTracks().forEach(t => t.stop());
+          bargeInStreamRef.current = null;
+          return;
         }
+        analyser.getFloatTimeDomainData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+        const rms = Math.sqrt(sum / dataArray.length);
+        console.log("🔍 Barge RMS:", rms); // ← ADD THIS LINE
 
-        bargeAnalyser = audioContext.createAnalyser();
-        bargeAnalyser.fftSize = 512;
-        bargeSource = audioContext.createMediaStreamSource(stream);
-        bargeSource.connect(bargeAnalyser);
+        if (rms > 0.015) {
+          console.log("⚡ Barge-in! User interrupted. RMS:", rms);
+          clearInterval(checkBargeIn);
+          audioContext.close();
+          stream.getTracks().forEach(t => t.stop());
+          bargeInStreamRef.current = null;
+          window.speechSynthesis.cancel();
+          speakingRef.current = false;
+          setCallStatus("listening");
+          setTimeout(() => startCallListening(), 100);
+        }
+      }, 100);
+    }).catch(() => {
+      // mic unavailable — speak without barge-in
+    });
 
-        const bargeData = new Float32Array(bargeAnalyser.fftSize);
-        const currentAdaptiveThreshold = adaptiveThresholdRef.current || 0.025;
-        const bargeThreshold = Math.max(0.055, currentAdaptiveThreshold * 2.2);
-
-        console.log("🎚️ Barge threshold:", bargeThreshold.toFixed(4), "| Session:", sessionId);
-
-        bargeInterval = setInterval(() => {
-          if (sessionId !== activeBargeSessionId) {
-            cleanupBarge();
-            return;
-          }
-
-          bargeAnalyser.getFloatTimeDomainData(bargeData);
-          let sum = 0;
-          for (let i = 0; i < bargeData.length; i++) {
-            sum += bargeData[i] * bargeData[i];
-          }
-          const rms = Math.sqrt(sum / bargeData.length);
-
-          if (!rms || rms < 0.001) return;
-
-          console.log("🔍 Barge RMS:", rms.toFixed(4), "| Session:", sessionId);
-
-          if (rms > bargeThreshold) {
-            console.log("⚡ Barge-in! RMS:", rms.toFixed(4), "| Session:", sessionId);
-
-            activeBargeSessionId++;
-            cleanupBarge();
-            window.speechSynthesis.cancel();
-
-            speakingRef.current = false;
-            setCallStatus("listening");
-            setTimeout(() => startCallListening(), 300);
-          }
-        }, 50);
-      } catch (err) {
-        console.error("Barge-in error:", err);
-        cleanupBarge();
-      }
-    };
-
-    utterance.onstart = () => {
-      startBargeDetection();
-    };
-
-    utterance.onend = () => {
-      cleanupBarge();
+    utter.onend = () => {
       speakingRef.current = false;
-      if (callModeRef.current && sessionId === activeBargeSessionId) {
+      bargeInStreamRef.current = null;
+      if (callModeRef.current) {
         setCallStatus("listening");
         setTimeout(() => startCallListening(), 500);
       }
     };
 
-    utterance.onerror = (e) => {
-      console.error("TTS error:", e);
-      cleanupBarge();
+    utter.onerror = () => {
       speakingRef.current = false;
-      if (callModeRef.current && sessionId === activeBargeSessionId) {
+      bargeInStreamRef.current = null;
+      if (callModeRef.current) {
         setCallStatus("listening");
         setTimeout(() => startCallListening(), 500);
       }
     };
 
-    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(utter);
   };
 
   const startCall = () => {
     callModeRef.current = true;
     setCallMode(true);
     setCallStatus("listening");
+    // Stop any existing regular listening
     stopListening();
     window.speechSynthesis.cancel();
-    window._lastCallTranscript = "";
     setTimeout(() => startCallListening(), 400);
   };
 
   const endCall = () => {
-    activeBargeSessionId++;
-
     callModeRef.current = false;
     speakingRef.current = false;
     setCallMode(false);
     setCallStatus("idle");
     window._lastCallTranscript = "";
-
-    if (callRecognitionRef.current?.state === "recording") {
-      try { callRecognitionRef.current.stop(); } catch { /* already stopped */ }
+    if (callRecognitionRef.current) {
+      try {
+        if (callRecognitionRef.current.state === "recording") {
+          callRecognitionRef.current.stop();
+        }
+      } catch (e) { }
+      callRecognitionRef.current = null;
     }
-    callRecognitionRef.current = null;
-
-    cleanupSharedAudio();
+    // ← ADD THIS: stop barge-in mic
+    if (bargeInStreamRef.current) {
+      bargeInStreamRef.current.getTracks().forEach(t => t.stop());
+      bargeInStreamRef.current = null;
+    }
     window.speechSynthesis.cancel();
   };
   // ── Voice ───────────────────────────────────────────────
