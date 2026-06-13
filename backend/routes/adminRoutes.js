@@ -43,6 +43,7 @@ router.get("/users", async (req, res) => {
 router.get("/users/:id/sessions", async (req, res) => {
   try {
     const sessions = await ChatSession.find({ userId: req.params.id })
+      .select("_id title messages updatedAt createdAt") // only needed fields
       .sort({ updatedAt: -1 });
     res.json({ sessions });
   } catch (err) {
