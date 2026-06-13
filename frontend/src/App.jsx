@@ -11,11 +11,24 @@ const THINKING_STAGES = [
 
 const EMPTY_FORM = { name: "", email: "", password: "" };
 
-// ── Shared Audio Resources (module-level) ──
+// ── Direct mic helper — fresh stream + AudioContext per call ──
+async function getMicWithAnalyser() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+  const audioContext = new AudioContext();
+  if (audioContext.state === "suspended") await audioContext.resume();
+  return { stream, audioContext };
+}
 
-let sharedAudioContext = null;
-let sharedAnalyser = null;
-let sharedSource = null;
+function releaseMic(stream, audioContext) {
+  try { stream?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+  try { audioContext?.close(); } catch { /* ignore */ }
+}
 
 function NeuralIcon({ size = 22, className = "" }) {
   return (
@@ -1071,41 +1084,38 @@ export default function App() {
   // Simple flow: listen → transcribe → get reply → speak → listen again
   const startCallListening = async () => {
     if (!callModeRef.current) return;
+    console.log("🎙️ startCallListening called");
     setCallStatus("listening");
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+    let stream = null;
+    let audioContext = null;
 
-      if (!callModeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+    try {
+      // Fresh mic + analyser every time — no shared state bugs
+      ({ stream, audioContext } = await getMicWithAnalyser());
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      console.log("🎙️ Got mic stream. Active:", stream.active, "AudioContext state:", audioContext.state);
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       callRecognitionRef.current = mediaRecorder;
       const chunks = [];
 
-      const audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 512;
-      source.connect(analyser);
-      const dataArray = new Float32Array(analyser.fftSize);
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
 
+      const dataArray = new Float32Array(analyser.fftSize);
+      const rmsHistory = [];
+      const HISTORY_SIZE = 20;
+      let adaptiveThreshold = 0.010; // Start low — adjusts upward from noise floor
       let speechDetected = false;
       let silenceStart = null;
-      let adaptiveThreshold = 0.025;
-      const rmsHistory = [];
-      const SILENCE_DURATION = 2000;
-      const MAX_DURATION = 8000;
-
-      const maxTimer = setTimeout(() => {
-        clearInterval(silenceInterval);
-        if (mediaRecorder.state === "recording") mediaRecorder.stop();
-      }, MAX_DURATION);
+      const SILENCE_DURATION = 1800;
+      const MAX_DURATION = 10000;
 
       const silenceInterval = setInterval(() => {
         analyser.getFloatTimeDomainData(dataArray);
@@ -1114,14 +1124,16 @@ export default function App() {
         const rms = Math.sqrt(sum / dataArray.length);
 
         rmsHistory.push(rms);
-        if (rmsHistory.length > 20) rmsHistory.shift();
+        if (rmsHistory.length > HISTORY_SIZE) rmsHistory.shift();
 
-        // Adapt threshold from quiet periods
-        if (!speechDetected && rmsHistory.length >= 5) {
+        // Calibrate threshold from noise floor during first ~2s of silence
+        if (!speechDetected && rmsHistory.length >= 8) {
           const sorted = [...rmsHistory].sort((a, b) => a - b);
-          const noiseFloor = sorted[Math.floor(sorted.length * 0.5)];
-          adaptiveThreshold = Math.max(0.025, noiseFloor * 3.0);
+          const noiseFloor = sorted[Math.floor(sorted.length * 0.4)];
+          adaptiveThreshold = Math.max(0.010, noiseFloor * 2.5);
         }
+
+        console.log("🎙️ VAD RMS:", rms.toFixed(4), "Threshold:", adaptiveThreshold.toFixed(4), "Speech:", speechDetected);
 
         if (rms > adaptiveThreshold) {
           speechDetected = true;
@@ -1129,6 +1141,7 @@ export default function App() {
         } else if (speechDetected) {
           if (!silenceStart) silenceStart = Date.now();
           if (Date.now() - silenceStart > SILENCE_DURATION) {
+            console.log("✅ Silence after speech — stopping recorder");
             clearInterval(silenceInterval);
             clearTimeout(maxTimer);
             if (mediaRecorder.state === "recording") mediaRecorder.stop();
@@ -1136,194 +1149,82 @@ export default function App() {
         }
       }, 100);
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
+      const maxTimer = setTimeout(() => {
+        console.log("⏱️ Max duration reached — stopping recorder");
+        clearInterval(silenceInterval);
+        if (mediaRecorder.state === "recording") mediaRecorder.stop();
+      }, MAX_DURATION);
+
+      mediaRecorder.start();
 
       mediaRecorder.onstop = async () => {
         clearInterval(silenceInterval);
         clearTimeout(maxTimer);
-        audioContext.close();
-        stream.getTracks().forEach(t => t.stop());
         callRecognitionRef.current = null;
+
+        // Release this call's mic immediately
+        releaseMic(stream, audioContext);
+
         if (!callModeRef.current) return;
 
-        const blob = new Blob(chunks, { type: "audio/webm" });
+        const peakRms = rmsHistory.length ? Math.max(...rmsHistory) : 0;
+        console.log("📊 Peak RMS:", peakRms.toFixed(4), "Speech detected:", speechDetected);
 
-        // Skip if no real speech detected
-        if (!speechDetected || blob.size < 3000) {
-          console.log("❌ No speech detected, listening again");
-          setTimeout(() => startCallListening(), 300);
+        // Use peak RMS and speechDetected flag — much more reliable than last sample
+        if (!speechDetected || peakRms < 0.010) {
+          console.log("❌ No real speech detected — restarting listener");
+          setTimeout(() => startCallListening(), 400);
           return;
         }
 
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        const formData = new FormData();
+        formData.append("audio", blob, "chunk.webm");
+        formData.append("language", language.split("-")[0]);
+
         try {
           setCallStatus("thinking");
-          const formData = new FormData();
-          formData.append("audio", blob, "audio.webm");
-          formData.append("language", language.split("-")[0]);
-
           const res = await fetch(`${API}/call/transcribe`, {
             method: "POST",
             headers: { Authorization: `Bearer ${tokenRef.current}` },
             body: formData,
           });
-
           const data = await res.json();
           const transcript = data.transcript?.trim();
+          console.log("📝 Transcript:", transcript);
 
-          if (!data.valid || !transcript) {
-            console.log("❌ Invalid transcript, listening again");
-            setTimeout(() => startCallListening(), 300);
+          if (!transcript) {
+            setCallStatus("listening");
+            setTimeout(() => startCallListening(), 400);
             return;
           }
 
-          // Repeat detection
-          const isShortPhrase = transcript.split(" ").length <= 2;
+          // Debounce repeated short phrases (noise artifacts)
+          const isShortPhrase = transcript.split(" ").length <= 3;
           const isSameAsLast = transcript.toLowerCase() === window._lastCallTranscript;
           if (isShortPhrase && isSameAsLast) {
-            console.log("❌ Repeated phrase ignored:", transcript);
+            console.log("🔁 Duplicate short phrase ignored:", transcript);
             window._lastCallTranscript = "";
-            setTimeout(() => startCallListening(), 300);
+            setCallStatus("listening");
+            setTimeout(() => startCallListening(), 400);
             return;
           }
 
-          console.log("✅ Transcript:", transcript);
           window._lastCallTranscript = transcript.toLowerCase();
           sendCallMessage(transcript);
-
-        } catch (err) {
-          console.error("Transcription error:", err);
-          if (callModeRef.current) setTimeout(() => startCallListening(), 500);
-        }
-      };
-
-      mediaRecorder.start();
-
-    } catch (err) {
-      console.error("Mic error:", err);
-      if (callModeRef.current) setTimeout(() => startCallListening(), 1000);
-    }
-  };
-
-  const sendCallMessage = async (text) => {
-    if (!callModeRef.current) return;
-    setCallStatus("thinking");
-
-    const now = new Date();
-    const userId = "u" + Date.now();
-    const botId = "b" + Date.now();
-    setMessages((prev) => [...prev, { role: "user", text, time: now, id: userId }]);
-    setMessages((prev) => [...prev, { role: "bot", text: "", thinking: true, time: now, id: botId }]);
-    fullReplyRef.current = "";
-
-    try {
-      const res = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenRef.current}` },
-        body: JSON.stringify({ message: text }),
-      });
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n").filter((l) => l.trim());
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const jsonStr = line.replace("data: ", "").trim();
-            if (jsonStr === "[DONE]") {
-              setMessages((prev) => {
-                const updated = prev.map((m) =>
-                  m.id === botId ? { ...m, text: fullReplyRef.current, thinking: false } : m
-                );
-                saveCurrentSession(updated);
-                return updated;
-              });
-              if (callModeRef.current) speakCallReply(fullReplyRef.current);
-              break;
-            }
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const token_text = parsed.token || "";
-              if (token_text) {
-                fullReplyRef.current += token_text;
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = {
-                    ...updated[updated.length - 1],
-                    text: fullReplyRef.current, thinking: false,
-                  };
-                  return updated;
-                });
-              }
-            } catch { }
+        } catch {
+          if (callModeRef.current) {
+            setCallStatus("listening");
+            setTimeout(() => startCallListening(), 1000);
           }
         }
-      }
+      };
     } catch (err) {
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1], text: "Error reaching server.", thinking: false,
-        };
-        return updated;
-      });
-      if (callModeRef.current) setTimeout(() => startCallListening(), 500);
+      console.error("❌ startCallListening error:", err);
+      // Release mic if we got it before the error
+      if (stream) releaseMic(stream, audioContext);
+      setCallStatus("idle");
     }
-  };
-
-  const speakCallReply = (text) => {
-    if (!callModeRef.current) return;
-    setCallStatus("speaking");
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = language;
-    utterance.rate = 1.0;
-
-    utterance.onend = () => {
-      if (!callModeRef.current) return;
-      setCallStatus("listening");
-      setTimeout(() => startCallListening(), 500);
-    };
-
-    utterance.onerror = () => {
-      if (!callModeRef.current) return;
-      setCallStatus("listening");
-      setTimeout(() => startCallListening(), 500);
-    };
-
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const startCall = () => {
-    callModeRef.current = true;
-    setCallMode(true);
-    setCallStatus("listening");
-    stopListening();
-    window.speechSynthesis.cancel();
-    window._lastCallTranscript = "";
-    setTimeout(() => startCallListening(), 400);
-  };
-
-  const endCall = () => {
-    callModeRef.current = false;
-    setCallMode(false);
-    setCallStatus("idle");
-    window._lastCallTranscript = "";
-    if (callRecognitionRef.current) {
-      try {
-        if (callRecognitionRef.current.state === "recording") {
-          callRecognitionRef.current.stop();
-        }
-      } catch { }
-      callRecognitionRef.current = null;
-    }
-    window.speechSynthesis.cancel();
   };
 
   const sendCallMessage = async (text) => {
@@ -1441,11 +1342,11 @@ export default function App() {
     setCallStatus("idle");
     window._lastCallTranscript = "";
 
+    // Stop any in-progress recording — mic will be released in onstop handler
     if (callRecognitionRef.current?.state === "recording") {
       try { callRecognitionRef.current.stop(); } catch { /* already stopped */ }
     }
     callRecognitionRef.current = null;
-    cleanupSharedAudio();
     window.speechSynthesis.cancel();
   };
 
