@@ -1132,7 +1132,7 @@ export default function App() {
         const dataArray = new Float32Array(analyser.fftSize);
         let silenceStart = null;
         let speechDetected = false;
-        const SILENCE_THRESHOLD = 0.015;   // same as your RMS threshold
+        const SILENCE_THRESHOLD = 0.025;   // same as your RMS threshold
         const SILENCE_DURATION = 2000;     // stop after 2s of silence
         const MAX_DURATION = 8000;      // hard cap 8s
 
@@ -1190,7 +1190,7 @@ export default function App() {
             const rms = Math.sqrt(sum / channelData.length);
             console.log("🎙️ Audio RMS energy:", rms);
 
-            if (rms < 0.01) {
+            if (rms < 0.025) {
               console.log("❌ No real speech — low energy:", rms);
               if (callModeRef.current && !speakingRef.current) setTimeout(() => startCallListening(), 300);
               return;
@@ -1357,7 +1357,7 @@ export default function App() {
         const rms = Math.sqrt(sum / dataArray.length);
         console.log("🔍 Barge RMS:", rms); // ← ADD THIS LINE
 
-        if (rms > 0.015) {
+        if (rms > 0.060) {
           console.log("⚡ Barge-in! User interrupted. RMS:", rms);
           clearInterval(checkBargeIn);
           audioContext.close();
