@@ -37,7 +37,7 @@ async function generateGeminiResponse(userMessage) {
 }
 
 // ── STREAMING (used to send words to frontend instantly) ─────
-async function generateGroqStream(userMessage, res) {
+async function generateGroqStream(userMessage, res, memoryContext = "") {
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
   const response = await axios.post(
@@ -47,7 +47,7 @@ async function generateGroqStream(userMessage, res) {
       messages: [
         {
           role: "system",
-          content: "You are a helpful AI customer support agent. Be friendly, clear and concise.",
+          content: "You are a helpful AI customer support agent. Be friendly, clear and concise." + memoryContext,
         },
         { role: "user", content: userMessage },
       ],

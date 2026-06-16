@@ -9,6 +9,7 @@ const authRoutes = require("./routes/authRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const callRoutes = require("./routes/callRoutes"); // ← ADD THIS
+const memoryRoutes = require("./routes/memoryRoutes");
 
 connectDB();
 
@@ -29,6 +30,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/call", callRoutes); // ← ADD THIS
+app.use("/api/memory", memoryRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

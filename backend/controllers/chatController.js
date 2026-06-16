@@ -1,5 +1,6 @@
 const { generateGroqStream } = require("../services/geminiService");
 const Conversation = require("../models/Conversation");
+const { extractAndSaveMemory, getRelevantMemories, formatMemoriesForPrompt } = require("./memoryController");
 
 const handleChat = async (req, res) => {
   const { message } = req.body;
@@ -9,11 +10,18 @@ const handleChat = async (req, res) => {
     return res.status(400).json({ error: "Message is required" });
 
   try {
+    const memories = await getRelevantMemories(userId, message);
+    const memoryContext = formatMemoriesForPrompt(memories);
+    extractAndSaveMemory(userId, message).catch((err) => {
+  console.error("Memory save failed:", err.message);
+  console.error("Memory save stack:", err.stack);
+});
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    const stream = await generateGroqStream(message, res);
+    const stream = await generateGroqStream(message, res, memoryContext);
 
     let fullReply = "";
 
