@@ -1,6 +1,7 @@
 const { generateGroqStream } = require("../services/geminiService");
 const Conversation = require("../models/Conversation");
 const { extractAndSaveMemory, getRelevantMemories, formatMemoriesForPrompt } = require("./memoryController");
+const { getRelevantChunks, formatChunksForPrompt } = require("./knowledgeController");
 
 const handleChat = async (req, res) => {
   const { message } = req.body;
@@ -12,6 +13,8 @@ const handleChat = async (req, res) => {
   try {
     const memories = await getRelevantMemories(userId, message);
     const memoryContext = formatMemoriesForPrompt(memories);
+    const chunks = await getRelevantChunks(message);
+    const knowledgeContext = formatChunksForPrompt(chunks);
     extractAndSaveMemory(userId, message).catch((err) => {
   console.error("Memory save failed:", err.message);
   console.error("Memory save stack:", err.stack);
@@ -21,7 +24,7 @@ const handleChat = async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    const stream = await generateGroqStream(message, res, memoryContext);
+    const stream = await generateGroqStream(message, res, memoryContext + knowledgeContext);
 
     let fullReply = "";
 

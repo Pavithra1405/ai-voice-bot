@@ -144,6 +144,123 @@ function SharedChatView() {
   );
 }
 
+function KnowledgeUpload({ token }) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("custom");
+  const [text, setText] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [docs, setDocs] = useState([]);
+  const [msg, setMsg] = useState("");
+
+  const loadDocs = async () => {
+    try {
+      const res = await fetch(`${API}/knowledge`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.documents) setDocs(data.documents);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { loadDocs(); }, []);
+
+  const handleUpload = async () => {
+    if (!title.trim() || !text.trim()) {
+      setMsg("⚠️ Title and text are required");
+      return;
+    }
+    setUploading(true);
+    setMsg("");
+    try {
+      const res = await fetch(`${API}/knowledge/upload`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title, category, text }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setMsg(`❌ ${data.error}`); return; }
+      setMsg(`✅ Uploaded: ${data.chunkCount} chunks created`);
+      setTitle(""); setText(""); setCategory("custom");
+      loadDocs();
+    } catch { setMsg("❌ Upload failed"); }
+    finally { setUploading(false); }
+  };
+
+  const handleDelete = async (docId) => {
+    try {
+      await fetch(`${API}/knowledge/${docId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      loadDocs();
+    } catch { /* ignore */ }
+  };
+
+  const handleFileRead = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setText(ev.target.result);
+    reader.readAsText(file);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <input
+        type="text" placeholder="Document title"
+        value={title} onChange={(e) => setTitle(e.target.value)}
+        style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: "0.85rem" }}
+      />
+      <select value={category} onChange={(e) => setCategory(e.target.value)}
+        style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: "0.85rem" }}>
+        <option value="manual">Support Manual</option>
+        <option value="pricing">Pricing Info</option>
+        <option value="custom">Custom Doc</option>
+        <option value="faq">FAQ</option>
+      </select>
+      <textarea
+        placeholder="Paste document text here..."
+        value={text} onChange={(e) => setText(e.target.value)}
+        rows={6}
+        style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: "0.85rem", resize: "vertical", fontFamily: "inherit" }}
+      />
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <label style={{ fontSize: "0.8rem", color: "var(--text3)", cursor: "pointer", padding: "6px 12px", border: "1px solid var(--border2)", borderRadius: 6, background: "var(--bg3)" }}>
+          📁 Upload .txt file
+          <input type="file" accept=".txt" onChange={handleFileRead} style={{ display: "none" }} />
+        </label>
+        <button onClick={handleUpload} disabled={uploading}
+          style={{ padding: "7px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: "0.85rem", fontWeight: 600, cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.7 : 1 }}>
+          {uploading ? "Uploading..." : "Upload"}
+        </button>
+      </div>
+      {msg && <div style={{ fontSize: "0.82rem", color: msg.startsWith("✅") ? "#22c55e" : "#ef4444" }}>{msg}</div>}
+      {docs.length > 0 && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Uploaded Documents ({docs.length})
+          </div>
+          {docs.map((doc) => (
+            <div key={doc._id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)" }}>
+              <div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>{doc.title}</div>
+                <div style={{ fontSize: "0.73rem", color: "var(--text3)" }}>{doc.category} · {doc.chunkCount} chunks</div>
+              </div>
+              <button onClick={() => handleDelete(doc._id)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: "0.8rem" }}>
+                🗑️
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Admin Panel ───────────────────────────────────────────────
 function AdminPanel({ token, onClose }) {
   const [users, setUsers] = useState([]);
@@ -609,6 +726,13 @@ function AdminPanel({ token, onClose }) {
                       </div>
                     ))
                   )}
+
+                  <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 16 }}>
+                      Knowledge Base
+                    </div>
+                    <KnowledgeUpload token={token} />
+                  </div>
                 </div>
               </>
             )}
