@@ -90,6 +90,8 @@ async function getRelevantChunks(queryText, topK = 3) {
     if (!queryEmbedding.length) return [];
 
     const docs = await KnowledgeBase.find().lean();
+    console.log("📚 getRelevantChunks called, docs found:", docs.length);
+    console.log("📚 Total chunks across all docs:", docs.reduce((sum, d) => sum + d.chunks.length, 0));
     const allChunks = [];
 
     for (const doc of docs) {
