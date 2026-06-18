@@ -244,7 +244,7 @@ function KnowledgeUpload({ token }) {
       });
       if (!res.ok) return;
       const data = await res.json();
-      setViewingDocContent((prev) => ({ ...prev, [docId]: data.originalText }));
+      setViewingDocContent((prev) => ({ ...prev, [docId]: data.document?.originalText }));
       setViewingDocId(docId);
     } catch { /* ignore */ }
   };
