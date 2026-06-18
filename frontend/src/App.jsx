@@ -151,6 +151,9 @@ function KnowledgeUpload({ token }) {
   const [uploading, setUploading] = useState(false);
   const [docs, setDocs] = useState([]);
   const [msg, setMsg] = useState("");
+  const [viewingDocId, setViewingDocId] = useState(null);
+  const [editingDocId, setEditingDocId] = useState(null);
+  const [editForm, setEditForm] = useState({ title: "", category: "custom", text: "" });
 
   const loadDocs = async () => {
     try {
@@ -199,6 +202,36 @@ function KnowledgeUpload({ token }) {
     } catch { /* ignore */ }
   };
 
+  const handleEdit = async (docId) => {
+    if (!editForm.title.trim() || !editForm.text.trim()) {
+      setMsg("⚠️ Title and text are required");
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/knowledge/${docId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: editForm.title, category: editForm.category, text: editForm.text }),
+      });
+      if (!res.ok) { const d = await res.json(); setMsg(`❌ ${d.error}`); return; }
+      setMsg("✅ Document updated");
+      setEditingDocId(null);
+      setEditForm({ title: "", category: "custom", text: "" });
+      loadDocs();
+    } catch { setMsg("❌ Update failed"); }
+  };
+
+  const startEdit = (doc) => {
+    setEditingDocId(doc._id);
+    setViewingDocId(null);
+    setEditForm({ title: doc.title, category: doc.category || "custom", text: doc.originalText || "" });
+  };
+
+  const cancelEdit = () => {
+    setEditingDocId(null);
+    setEditForm({ title: "", category: "custom", text: "" });
+  };
+
   const handleFileRead = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -244,15 +277,57 @@ function KnowledgeUpload({ token }) {
             Uploaded Documents ({docs.length})
           </div>
           {docs.map((doc) => (
-            <div key={doc._id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)" }}>
-              <div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>{doc.title}</div>
-                <div style={{ fontSize: "0.73rem", color: "var(--text3)" }}>{doc.category} · {doc.chunkCount} chunks</div>
+            <div key={doc._id} style={{ display: "flex", flexDirection: "column", borderRadius: 8, border: "1px solid var(--border2)", background: "var(--bg3)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px" }}>
+                <div>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>{doc.title}</div>
+                  <div style={{ fontSize: "0.73rem", color: "var(--text3)" }}>{doc.category} · {doc.chunkCount} chunks</div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => setViewingDocId(viewingDocId === doc._id ? null : doc._id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "0.75rem", fontWeight: 600 }}>
+                    {viewingDocId === doc._id ? "HIDE" : "VIEW"}
+                  </button>
+                  <button onClick={() => startEdit(doc)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "0.75rem", fontWeight: 600 }}>
+                    EDIT
+                  </button>
+                  <button onClick={() => handleDelete(doc._id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: "0.8rem" }}>
+                    🗑️
+                  </button>
+                </div>
               </div>
-              <button onClick={() => handleDelete(doc._id)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: "0.8rem" }}>
-                🗑️
-              </button>
+              {viewingDocId === doc._id && !editingDocId && (
+                <div style={{ padding: "0 14px 10px 14px", fontSize: "0.8rem", color: "var(--text2)", whiteSpace: "pre-wrap", maxHeight: 300, overflowY: "auto", borderTop: "1px solid var(--border2)", paddingTop: 10 }}>
+                  {doc.originalText}
+                </div>
+              )}
+              {editingDocId === doc._id && (
+                <div style={{ padding: "0 14px 10px 14px", display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--border2)", paddingTop: 10 }}>
+                  <input type="text" placeholder="Title" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg2)", color: "var(--text)", fontSize: "0.8rem" }} />
+                  <select value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                    style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg2)", color: "var(--text)", fontSize: "0.8rem" }}>
+                    <option value="manual">Support Manual</option>
+                    <option value="pricing">Pricing Info</option>
+                    <option value="custom">Custom Doc</option>
+                    <option value="faq">FAQ</option>
+                  </select>
+                  <textarea placeholder="Document text" value={editForm.text} onChange={(e) => setEditForm({ ...editForm, text: e.target.value })}
+                    rows={4} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg2)", color: "var(--text)", fontSize: "0.8rem", resize: "vertical", fontFamily: "inherit" }} />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => handleEdit(doc._id)}
+                      style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: "var(--accent)", color: "#fff", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer" }}>
+                      SAVE
+                    </button>
+                    <button onClick={cancelEdit}
+                      style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text)", fontSize: "0.78rem", cursor: "pointer" }}>
+                      CANCEL
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

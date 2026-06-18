@@ -72,6 +72,41 @@ const getAllDocuments = async (req, res) => {
   }
 };
 
+const updateDocument = async (req, res) => {
+  try {
+    const { title, category, text } = req.body;
+    if (!title || !text) {
+      return res.status(400).json({ error: "Title and text are required" });
+    }
+
+    const rawChunks = chunkText(text);
+    const chunks = await Promise.all(
+      rawChunks.map(async (chunkText, index) => {
+        const embedding = await generateEmbedding(chunkText);
+        return { text: chunkText, embedding, chunkIndex: index };
+      })
+    );
+
+    const updated = await KnowledgeBase.findByIdAndUpdate(
+      req.params.docId,
+      { title, category, originalText: text, chunks },
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).json({ error: "Document not found" });
+
+    console.log(`✅ Document updated: ${title} with ${chunks.length} chunks`);
+    res.json({
+      message: "Document updated successfully",
+      documentId: updated._id,
+      chunkCount: chunks.length,
+    });
+  } catch (err) {
+    console.error("❌ Update error:", err.message);
+    res.status(500).json({ error: "Failed to update document" });
+  }
+};
+
 // Delete a document
 const deleteDocument = async (req, res) => {
   try {
@@ -127,6 +162,7 @@ function formatChunksForPrompt(chunks) {
 module.exports = {
   uploadDocument,
   getAllDocuments,
+  updateDocument,
   deleteDocument,
   getRelevantChunks,
   formatChunksForPrompt,
