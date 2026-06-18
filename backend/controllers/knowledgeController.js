@@ -72,6 +72,18 @@ const getAllDocuments = async (req, res) => {
   }
 };
 
+const getDocumentById = async (req, res) => {
+  try {
+    const doc = await KnowledgeBase.findById(req.params.docId)
+      .select("title category originalText chunks createdAt")
+      .lean();
+    if (!doc) return res.status(404).json({ error: "Document not found" });
+    res.json({ document: doc });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch document" });
+  }
+};
+
 const updateDocument = async (req, res) => {
   try {
     const { title, category, text } = req.body;
@@ -162,6 +174,7 @@ function formatChunksForPrompt(chunks) {
 module.exports = {
   uploadDocument,
   getAllDocuments,
+  getDocumentById,
   updateDocument,
   deleteDocument,
   getRelevantChunks,

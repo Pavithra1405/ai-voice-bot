@@ -5,6 +5,7 @@ const admin = require("../middleware/adminMiddleware");
 const {
   uploadDocument,
   getAllDocuments,
+  getDocumentById,
   updateDocument,
   deleteDocument,
 } = require("../controllers/knowledgeController");
@@ -12,6 +13,7 @@ const {
 // Admin only routes
 router.post("/upload", auth, admin, uploadDocument);
 router.get("/", auth, admin, getAllDocuments);
+router.get("/:docId", auth, admin, getDocumentById);
 router.patch("/:docId", auth, admin, updateDocument);
 router.delete("/:docId", auth, admin, deleteDocument);
 

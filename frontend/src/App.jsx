@@ -152,6 +152,7 @@ function KnowledgeUpload({ token }) {
   const [docs, setDocs] = useState([]);
   const [msg, setMsg] = useState("");
   const [viewingDocId, setViewingDocId] = useState(null);
+  const [viewingDocContent, setViewingDocContent] = useState({});
   const [editingDocId, setEditingDocId] = useState(null);
   const [editForm, setEditForm] = useState({ title: "", category: "custom", text: "" });
 
@@ -232,6 +233,22 @@ function KnowledgeUpload({ token }) {
     setEditForm({ title: "", category: "custom", text: "" });
   };
 
+  const handleViewToggle = async (docId) => {
+    if (viewingDocId === docId) {
+      setViewingDocId(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/knowledge/${docId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setViewingDocContent((prev) => ({ ...prev, [docId]: data.originalText }));
+      setViewingDocId(docId);
+    } catch { /* ignore */ }
+  };
+
   const handleFileRead = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -284,7 +301,7 @@ function KnowledgeUpload({ token }) {
                   <div style={{ fontSize: "0.73rem", color: "var(--text3)" }}>{doc.category} · {doc.chunkCount} chunks</div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => setViewingDocId(viewingDocId === doc._id ? null : doc._id)}
+                  <button onClick={() => handleViewToggle(doc._id)}
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: "0.75rem", fontWeight: 600 }}>
                     {viewingDocId === doc._id ? "HIDE" : "VIEW"}
                   </button>
@@ -300,7 +317,7 @@ function KnowledgeUpload({ token }) {
               </div>
               {viewingDocId === doc._id && !editingDocId && (
                 <div style={{ padding: "0 14px 10px 14px", fontSize: "0.8rem", color: "var(--text2)", whiteSpace: "pre-wrap", maxHeight: 300, overflowY: "auto", borderTop: "1px solid var(--border2)", paddingTop: 10 }}>
-                  {doc.originalText}
+                  {viewingDocContent[doc._id]}
                 </div>
               )}
               {editingDocId === doc._id && (
